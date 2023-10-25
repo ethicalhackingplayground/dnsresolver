@@ -1,0 +1,24 @@
+[package]
+name = "dnsresolver"
+version = "0.1.6"
+edition = "2021"
+authors = ["zoid", "<krypt0mux@gmail.com>"]
+description = "A really fast dns resolver."
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.0"
+itertools = "0.11.0"
+governor = "0.6.0"
+futures = "0.3.26"
+futures-util = "0.3.26"
+openssl = { version = "0.10.45", features = ["vendored"] }
+tokio = { version = "1.28.2", features = ["full"] }
+spmc = "0.3.0"
+trust-dns-resolver = { version = "*", features = ["dns-over-rustls"] }
+tokio-dns-unofficial = "0.4.0"
+async-std = "1.12.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
