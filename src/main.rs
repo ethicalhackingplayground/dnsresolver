@@ -11,9 +11,9 @@ use tokio::{
     task,
 };
 
+use hickory_resolver::config::*;
 use hickory_resolver::AsyncResolver;
 use hickory_resolver::TokioAsyncResolver;
-use hickory_resolver::config::*;
 
 struct Job {
     host: Option<String>,
@@ -114,13 +114,9 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     // Set up a worker pool with the number of threads specified from the arguments
-    rt.spawn(async move {
-        send_url(job_tx, ports, input_hosts, rate).await
-    });
+    rt.spawn(async move { send_url(job_tx, ports, input_hosts, rate).await });
 
-    let resolver = TokioAsyncResolver::tokio(
-        ResolverConfig::default(),
-        ResolverOpts::default());
+    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
     // process the jobs
     let workers = FuturesUnordered::new();
@@ -146,7 +142,7 @@ async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
     lines: Vec<String>,
-    rate: u32
+    rate: u32,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     //set rate limit
     let lim = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(rate).unwrap()));
@@ -168,7 +164,14 @@ async fn send_url(
 /**
  * This function will be in charge of resolving and probing the hosts
  */
-async fn run_resolver(rx: spmc::Receiver<Job>, resolver: AsyncResolver<hickory_resolver::name_server::GenericConnector<hickory_resolver::name_server::TokioRuntimeProvider>>) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+async fn run_resolver(
+    rx: spmc::Receiver<Job>,
+    resolver: AsyncResolver<
+        hickory_resolver::name_server::GenericConnector<
+            hickory_resolver::name_server::TokioRuntimeProvider,
+        >,
+    >,
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     while let Ok(job) = rx.recv() {
         let job_host: String = job.host.unwrap();
         let job_ports = job.ports.unwrap();
