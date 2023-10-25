@@ -14,7 +14,7 @@ cargo install --path .
 cat subs.txt | dnsresolver
 ```
 
-If you want to resolve hosts that contain different ports than the default 80,443 you can use the `--ports` flag:
+If you need to resolve hosts with ports other than the standard 80 and 443, you can use the `--ports` flag.
 
 ```bash
 cat subs.txt | dnsresolver -p 8080,8081
