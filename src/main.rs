@@ -10,16 +10,14 @@ use tokio::{
     runtime::Builder,
     task,
 };
-use trust_dns_resolver::config::*;
-use trust_dns_resolver::name_server::GenericConnection;
-use trust_dns_resolver::name_server::GenericConnectionProvider;
-use trust_dns_resolver::name_server::TokioRuntime;
-use trust_dns_resolver::{AsyncResolver, TokioAsyncResolver};
+
+use hickory_resolver::AsyncResolver;
+use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::*;
 
 struct Job {
     host: Option<String>,
     ports: Option<String>,
-    resolver: Option<AsyncResolver<GenericConnection, GenericConnectionProvider<TokioRuntime>>>,
 }
 
 /**
@@ -117,20 +115,23 @@ async fn main() -> std::io::Result<()> {
 
     // Set up a worker pool with the number of threads specified from the arguments
     rt.spawn(async move {
-        let resolver =
-            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()).unwrap();
-        send_url(job_tx, ports, input_hosts, rate, resolver).await
+        send_url(job_tx, ports, input_hosts, rate).await
     });
+
+    let resolver = TokioAsyncResolver::tokio(
+        ResolverConfig::default(),
+        ResolverOpts::default());
 
     // process the jobs
     let workers = FuturesUnordered::new();
 
     // process the jobs for scanning.
     for _ in 0..concurrency {
+        let dns_resolver = resolver.clone();
         let jrx = job_rx.clone();
         workers.push(task::spawn(async move {
             //  run the detector
-            run_resolver(jrx).await
+            run_resolver(jrx, dns_resolver).await
         }));
     }
     let _: Vec<_> = workers.collect().await;
@@ -145,18 +146,15 @@ async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
     lines: Vec<String>,
-    rate: u32,
-    resolver: AsyncResolver<GenericConnection, GenericConnectionProvider<TokioRuntime>>,
+    rate: u32
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     //set rate limit
     let lim = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(rate).unwrap()));
 
     for line in lines {
-        let dns_resolver = resolver.clone();
         let msg = Job {
             host: Some(line.to_string().clone()),
             ports: Some(ports.to_string()),
-            resolver: Some(dns_resolver),
         };
         if let Err(_) = tx.send(msg) {
             continue;
@@ -170,11 +168,10 @@ async fn send_url(
 /**
  * This function will be in charge of resolving and probing the hosts
  */
-async fn run_resolver(rx: spmc::Receiver<Job>) {
+async fn run_resolver(rx: spmc::Receiver<Job>, resolver: AsyncResolver<hickory_resolver::name_server::GenericConnector<hickory_resolver::name_server::TokioRuntimeProvider>>) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     while let Ok(job) = rx.recv() {
         let job_host: String = job.host.unwrap();
         let job_ports = job.ports.unwrap();
-        let resolver = job.resolver.unwrap();
 
         // send the jobs
         let ports = job_ports.clone();
@@ -315,4 +312,6 @@ async fn run_resolver(rx: spmc::Receiver<Job>) {
             }
         }
     }
+
+    Ok(())
 }
