@@ -1,18 +1,22 @@
-// use chrono::{Local, Datelike, Timelike};
-
-use async_std::net::TcpStream;
-use clap::{App, Arg};
-use futures::{stream::FuturesUnordered, StreamExt};
-use governor::{Quota, RateLimiter};
-use std::{error::Error, net::SocketAddr, time::Duration};
-use tokio::{
-    io::{self, AsyncBufReadExt},
-    runtime::Builder,
-    task,
+// Import the necessary libraries
+use async_std::net::TcpStream; // Provides functionality for TCP networking
+use clap::{App, Arg}; // Command-line argument parsing library
+use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
+use governor::{Quota, RateLimiter}; // Rate limiting library
+use std::{error::Error, net::SocketAddr, time::Duration}; // Standard library modules for error handling, networking, and time
+use tokio::{ // Asynchronous runtime for Rust
+    io::{self, AsyncBufReadExt}, // I/O operations and extension traits
+    runtime::Builder, // Builder for creating custom Tokio runtimes
+    task, // Task handling
 };
 
+// Import the `config` module from the `hickory_resolver` crate
 use hickory_resolver::config::*;
+
+// Import the `AsyncResolver` struct from the `hickory_resolver` crate
 use hickory_resolver::AsyncResolver;
+
+// Import the `TokioAsyncResolver` struct from the `hickory_resolver` crate
 use hickory_resolver::TokioAsyncResolver;
 
 // Define a struct called Job
