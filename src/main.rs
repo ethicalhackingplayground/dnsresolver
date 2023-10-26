@@ -230,6 +230,8 @@ async fn main() -> std::io::Result<()> {
     // Create an empty vector to store resolvers
     let mut resolver_list = vec![];
 
+    let mut resolver_config = ResolverConfig::default();
+
     // Check if resolvers is not empty
     if !resolvers.is_empty() {
         // Read the list of DNS resolvers from a file
@@ -272,14 +274,14 @@ async fn main() -> std::io::Result<()> {
             // Add the IP address to the resolver list
             resolver_list.push(ip_addr);
         }
+
+        // Create a NameServerConfigGroup from your list of resolvers
+        let name_server_group =
+            NameServerConfigGroup::from_ips_clear(resolver_list.as_slice(), 53, true);
+
+        // Create a ResolverConfig using from_parts
+        resolver_config = ResolverConfig::from_parts(None, vec![], name_server_group);
     }
-
-    // Create a NameServerConfigGroup from your list of resolvers
-    let name_server_group =
-        NameServerConfigGroup::from_ips_clear(resolver_list.as_slice(), 53, true);
-
-    // Create a ResolverConfig using from_parts
-    let resolver_config = ResolverConfig::from_parts(None, vec![], name_server_group);
 
     // Create a resolver
     let resolver = TokioAsyncResolver::tokio(resolver_config, ResolverOpts::default());
