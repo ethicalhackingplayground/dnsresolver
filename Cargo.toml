@@ -18,6 +18,7 @@ openssl = { version = "0.10.45", features = ["vendored"] }
 tokio = { version = "1.28.2", features = ["full"] }
 spmc = "0.3.0"
 hickory-resolver = { version = "*", features = ["dns-over-rustls"] }
+reqwest = { version = "0.11.14", features = ["native-tls", "blocking"] }
 async-std = "1.12.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

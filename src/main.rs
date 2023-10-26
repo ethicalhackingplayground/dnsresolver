@@ -1,19 +1,16 @@
-/// The above code is a Rust program that imports necessary libraries and defines a main function. It
-/// uses the `async_std` library for TCP networking, the `clap` library for command-line argument
-/// parsing, the `futures` library for asynchronous programming, and the `governor` library for rate
-/// limiting.
 // Import the necessary libraries
 use async_std::net::TcpStream; // Provides functionality for TCP networking
 use clap::{App, Arg}; // Command-line argument parsing library
-use futures::{stream::FuturesUnordered, StreamExt};
-// Asynchronous programming library
+use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
 use governor::{Quota, RateLimiter}; // Rate limiting library
-use std::{error::Error, net::SocketAddr, time::Duration}; // Standard library modules for error handling, networking, and time
+use reqwest::{header::HeaderValue, redirect, Method, Request}; // HTTP client library
+use std::{error::Error, net::SocketAddr, process::exit, time::Duration}; // Standard library modules for error handling, networking, and time
 use tokio::{
-    // Asynchronous runtime for Rust
-    io::{self, AsyncBufReadExt}, // I/O operations and extension traits
-    runtime::Builder,            // Builder for creating custom Tokio runtimes
-    task,                        // Task handling
+    fs::OpenOptions,                            // File system manipulation
+    io::{self, AsyncBufReadExt, AsyncWriteExt}, // Asynchronous I/O operations and extension traits
+    runtime::Builder,                           // Builder for creating custom Tokio runtimes
+    sync::mpsc,                                 // Asynchronous message passing
+    task,                                       // Task handling
 };
 
 // Import the `config` module from the `hickory_resolver` crate
@@ -26,11 +23,23 @@ use hickory_resolver::AsyncResolver;
 use hickory_resolver::TokioAsyncResolver;
 
 // Define a struct called Job
+#[derive(Clone, Debug)]
 struct Job {
     // The host field is an optional String that represents the host of the job
     host: Option<String>,
     // The ports field is an optional String that represents the ports of the job
     ports: Option<String>,
+}
+
+// This code block defines a Rust struct named `JobResult` with the following properties:
+#[derive(Clone, Debug)]
+pub struct JobResult {
+    // `domain`: A public field of type `String`, which holds the domain associated with the job result.
+    pub domain: String,
+    // `ip`: A public field of type `String`, which holds the IP address associated with the job result.
+    pub ip: String,
+    // `outdir`: A public field of type `String`, which holds the output directory associated with the job result.
+    pub outdir: String,
 }
 
 // This is the entry point of the program.
@@ -80,6 +89,22 @@ async fn main() -> std::io::Result<()> {
                 .display_order(3)
                 .help("the number of concurrent workers"),
         )
+        .arg(
+            Arg::with_name("vhost")
+                .long("vhost")
+                .default_value("false")
+                .display_order(4)
+                .help("checks if the host is a vhost and prints out the domains associated to the IP address"),
+        )
+        .arg(
+            Arg::with_name("dir")
+                .short("d")
+                .long("dir")
+                .takes_value(true)
+                .default_value("vhosts")
+                .display_order(4)
+                .help("the output directory to store all your virtual hosts that have been enumerated"),
+        )
         .get_matches();
 
     // Parse the rate argument and set a default value if parsing fails
@@ -109,10 +134,35 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // The above code is checking if the "vhost" flag is present in the "matches" object. If the flag
+    // is present, the variable "vhost" will be set to true.
+    let vhost = matches.is_present("vhost");
+    if vhost {
+        // Attempt to create a directory named "vhosts" and all its parent directories if they don't exist
+        match std::fs::create_dir_all("vhosts") {
+            // If the directory creation is successful, store the result in the `m` variable
+            Ok(m) => m,
+            // If there is an error during directory creation, print the error message to the standard error output
+            // and exit the program with a status code of 1
+            Err(err) => {
+                eprintln!("{}", err);
+                exit(1)
+            }
+        };
+    }
+
     // Parse the ports argument or use a default value
     let ports = match matches.value_of("ports") {
         Some(ports) => ports.to_string(),
         None => "80,443".to_string(),
+    };
+
+    // Get the value of the "dir" command line argument using the `matches` object.
+    // If a value is provided, assign it to the `outdir` variable as a string.
+    // If no value is provided, assign the string "." to the `outdir` variable.
+    let outdir = match matches.value_of("dir") {
+        Some(outdir) => outdir.to_string(),
+        None => "vhost".to_string(),
     };
 
     // Read input hosts from stdin
@@ -126,6 +176,7 @@ async fn main() -> std::io::Result<()> {
 
     // Create channels for sending jobs
     let (job_tx, job_rx) = spmc::channel::<Job>();
+    let (result_tx, result_rx) = mpsc::channel::<JobResult>(w);
 
     // Create a multi-threaded runtime
     let rt = Builder::new_multi_thread()
@@ -137,6 +188,8 @@ async fn main() -> std::io::Result<()> {
     // Spawn a worker thread to send URLs to resolver
     rt.spawn(async move { send_url(job_tx, ports, input_hosts, rate).await });
 
+    rt.spawn(async move { write_to_file(result_rx).await });
+
     // Create a resolver
     let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
@@ -147,12 +200,17 @@ async fn main() -> std::io::Result<()> {
     for _ in 0..concurrency {
         let dns_resolver = resolver.clone();
         let jrx = job_rx.clone();
+        let jtx = result_tx.clone();
+        let out = outdir.clone();
         workers.push(task::spawn(async move {
             //  run the detector
-            run_resolver(jrx, dns_resolver).await
+            run_resolver(jtx, jrx, dns_resolver, vhost, out.as_str()).await
         }));
     }
+
+    // Collect the results from the workers asynchronously and store them in a vector
     let _: Vec<_> = workers.collect().await;
+
     rt.shutdown_background();
     Ok(())
 }
@@ -207,13 +265,34 @@ async fn send_url(
 
 // Overall, this function is responsible for running a resolver asynchronously by receiving `Job` objects from the `rx` receiver and using the `resolver` to handle DNS resolution.
 async fn run_resolver(
+    tx: mpsc::Sender<JobResult>,
     rx: spmc::Receiver<Job>,
     resolver: AsyncResolver<
         hickory_resolver::name_server::GenericConnector<
             hickory_resolver::name_server::TokioRuntimeProvider,
         >,
     >,
+    vhost: bool,
+    out: &str,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0) Gecko/20100101 Firefox/95.0",
+        ),
+    );
+
+    //no certs
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .redirect(redirect::Policy::limited(10))
+        .timeout(Duration::from_secs(3))
+        .danger_accept_invalid_hostnames(true)
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+
     while let Ok(job) = rx.recv() {
         // Receive a job from the channel and assign it to the `job` variable
 
@@ -245,13 +324,11 @@ async fn run_resolver(
             let job_host_https = job_host_http.clone().to_string();
             let http_port = port.to_string();
             let https_port = http_port.to_string();
+
             // Lookup the IP addresses associated with a name.
             // The final dot forces this to be an FQDN, otherwise the search rules as specified
             // in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
-            let response = match resolver
-                .lookup_ip(job_host_https.as_str().to_string())
-                .await
-            {
+            let response = match resolver.lookup_ip(job_host.as_str().to_string()).await {
                 Ok(r) => r,
                 Err(_) => {
                     // If the DNS lookup fails, return early
@@ -282,7 +359,68 @@ async fn run_resolver(
                                 "{}{}:{}",
                                 "http://", job_host_http, http_port
                             ));
-                            println!("{}", http_with_port);
+                            if !vhost {
+                                println!("{}", http_with_port);
+                            } else {
+                                // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
+                                let domain = http_with_port.clone();
+
+                                println!("{}", http_with_port);
+
+                                // If the TCP connection is successful, print the HTTP URL with the port
+                                let ip = String::from(format!(
+                                    "{}{}:{}",
+                                    "http://",
+                                    address.to_string(),
+                                    http_port
+                                ));
+
+                                let ip_url = match reqwest::Url::parse(&ip.to_string()) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+
+                                // Build a request
+                                let mut request = Request::new(Method::GET, ip_url);
+
+                                let url = match reqwest::Url::parse(&http_with_port) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+                                let host_value = match url.domain() {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+
+                                // Replace the Host header
+                                request.headers_mut().insert(
+                                    reqwest::header::HOST,
+                                    HeaderValue::from_str(host_value).unwrap(),
+                                );
+
+                                // Make a request with the modified headers
+                                let response = match client.execute(request).await {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+                                if response.status().as_u16() != 404 {
+                                    // Print the domain and IP address
+                                    println!(
+                                        "\n\t{} belongs to -> {}",
+                                        domain,
+                                        address.to_string()
+                                    );
+                                    let job = JobResult {
+                                        domain: domain,
+                                        ip: address.to_string(),
+                                        outdir: out.to_owned(),
+                                    };
+
+                                    if let Err(_) = tx.send(job).await {
+                                        continue;
+                                    }
+                                }
+                            }
                         }
                         _ => {
                             // If the TCP connection fails, return early
@@ -313,7 +451,68 @@ async fn run_resolver(
                                 "{}{}:{}",
                                 "https://", job_host_https, https_port
                             ));
-                            println!("{}", https_with_port);
+                            if !vhost {
+                                println!("{}", https_with_port);
+                            } else {
+                                // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
+                                let domain = https_with_port.clone();
+
+                                println!("{}", https_with_port);
+
+                                // If the TCP connection is successful, print the HTTPS URL with the port
+                                let ip: String = String::from(format!(
+                                    "{}{}:{}",
+                                    "https://",
+                                    address.to_string(),
+                                    https_port
+                                ));
+
+                                let ip_url = match reqwest::Url::parse(&ip.to_string()) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+
+                                // Build a request
+                                let mut request = Request::new(Method::GET, ip_url);
+
+                                let url = match reqwest::Url::parse(&https_with_port) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+                                let host_value = match url.domain() {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+
+                                // Replace the Host header
+                                request.headers_mut().insert(
+                                    reqwest::header::HOST,
+                                    HeaderValue::from_str(host_value).unwrap(),
+                                );
+
+                                // Make a request with the modified headers
+                                let response = match client.execute(request).await {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+                                if response.status().as_u16() != 404 {
+                                    // Print the domain and IP address
+                                    println!(
+                                        "\n\t{} belongs to -> {}",
+                                        domain,
+                                        address.to_string()
+                                    );
+                                    let job = JobResult {
+                                        domain: domain,
+                                        ip: address.to_string(),
+                                        outdir: out.to_owned(),
+                                    };
+
+                                    if let Err(_) = tx.send(job).await {
+                                        continue;
+                                    }
+                                }
+                            }
                         }
                         _ => {
                             // If the TCP connection fails, return early
@@ -344,7 +543,68 @@ async fn run_resolver(
                                 "{}{}:{}",
                                 "https://", job_host_https, https_port
                             ));
-                            println!("{}", https_with_port);
+                            if !vhost {
+                                println!("{}", https_with_port);
+                            } else {
+                                // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
+                                let domain = https_with_port.clone();
+
+                                println!("{}", https_with_port);
+
+                                // If the TCP connection is successful, print the HTTPS URL with the port
+                                let ip = String::from(format!(
+                                    "{}{}:{}",
+                                    "https://",
+                                    address.to_string(),
+                                    https_port
+                                ));
+
+                                let ip_url = match reqwest::Url::parse(&ip.to_string()) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+
+                                // Build a request
+                                let mut request = Request::new(Method::GET, ip_url);
+
+                                let url = match reqwest::Url::parse(&https_with_port) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+                                let host_value = match url.domain() {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+
+                                // Replace the Host header
+                                request.headers_mut().insert(
+                                    reqwest::header::HOST,
+                                    HeaderValue::from_str(host_value).unwrap(),
+                                );
+
+                                // Make a request with the modified headers
+                                let response = match client.execute(request).await {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+                                if response.status().as_u16() != 404 {
+                                    // Print the domain and IP address
+                                    println!(
+                                        "\n\t{} belongs to -> {}",
+                                        domain,
+                                        address.to_string()
+                                    );
+                                    let job = JobResult {
+                                        domain: domain,
+                                        ip: address.to_string(),
+                                        outdir: out.to_owned(),
+                                    };
+
+                                    if let Err(_) = tx.send(job).await {
+                                        continue;
+                                    }
+                                }
+                            }
                         }
                         _ => {
                             // If the TCP connection
@@ -366,7 +626,68 @@ async fn run_resolver(
                                 "{}{}:{}",
                                 "http://", job_host_http, http_port
                             ));
-                            println!("{}", http_with_port);
+                            if !vhost {
+                                println!("{}", http_with_port);
+                            } else {
+                                println!("{}", http_with_port);
+
+                                // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
+                                let domain = http_with_port.clone();
+
+                                // If the TCP connection is successful, print the HTTP URL with the port
+                                let ip = String::from(format!(
+                                    "{}{}:{}",
+                                    "http://",
+                                    address.to_string(),
+                                    http_port
+                                ));
+
+                                let ip_url = match reqwest::Url::parse(&ip.to_string()) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+
+                                // Build a request
+                                let mut request = Request::new(Method::GET, ip_url);
+
+                                let url = match reqwest::Url::parse(&http_with_port) {
+                                    Ok(u) => u,
+                                    Err(_) => continue,
+                                };
+                                let host_value = match url.domain() {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+
+                                // Replace the Host header
+                                request.headers_mut().insert(
+                                    reqwest::header::HOST,
+                                    HeaderValue::from_str(host_value).unwrap(),
+                                );
+
+                                // Make a request with the modified headers
+                                let response = match client.execute(request).await {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+                                if response.status().as_u16() != 404 {
+                                    // Print the domain and IP address
+                                    println!(
+                                        "\n\t{} belongs to -> {}",
+                                        domain,
+                                        address.to_string()
+                                    );
+                                    let job = JobResult {
+                                        domain: domain,
+                                        ip: address.to_string(),
+                                        outdir: out.to_owned(),
+                                    };
+
+                                    if let Err(_) = tx.send(job).await {
+                                        continue;
+                                    }
+                                }
+                            }
                         }
                         _ => {
                             // If the TCP connection
@@ -379,4 +700,48 @@ async fn run_resolver(
     }
 
     Ok(())
+}
+
+// This function writes the given `vhost` string to the provided `outfile` file asynchronously.
+pub async fn write_to_file(mut rx: mpsc::Receiver<JobResult>) {
+    // Continuously receive job results from the receiver
+    while let Some(job) = rx.recv().await {
+        let domain = job.domain;
+        let ip = job.ip;
+        let outdir = job.outdir;
+
+        // Create the directory (including parent directories) to store the output file.
+        // If the directory creation fails, skip to the next iteration of the loop.
+        match std::fs::create_dir_all(format!("{}/{}", outdir, ip)) {
+            Ok(c) => c, // The directory was successfully created.
+            Err(_) => {
+                return; // Skip to the next iteration of the loop.
+            }
+        };
+
+        // Open the output file in append mode.
+        // If the file opening fails, print an error message and exit the program with code 1.
+        let mut outfile_handle = match OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(format!("{}/{}/vhosts.txt", outdir, ip))
+            .await
+        {
+            Ok(outfile_handle) => outfile_handle, // The file was successfully opened.
+            Err(_) => {
+                continue; // Skip to the next iteration of the loop.
+            }
+        };
+
+        // Convert the `vhost` string to bytes and create a mutable copy of it.
+        let mut outbuf = domain.as_bytes().to_owned();
+        // Append a newline character to the end of the `outbuf` byte buffer.
+        outbuf.extend_from_slice(b"\n");
+        // Write the content of the `outbuf` byte buffer to the `outfile` file.
+        // If an error occurs during the write operation, return early from the function.
+        if let Err(_) = outfile_handle.write(&outbuf).await {
+            return; // Skip to the next iteration of the loop.
+        }
+    }
 }
