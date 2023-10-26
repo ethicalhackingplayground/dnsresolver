@@ -15,16 +15,17 @@ use hickory_resolver::config::*;
 use hickory_resolver::AsyncResolver;
 use hickory_resolver::TokioAsyncResolver;
 
+// Define a struct called Job
 struct Job {
+    // The host field is an optional String that represents the host of the job
     host: Option<String>,
+    // The ports field is an optional String that represents the ports of the job
     ports: Option<String>,
 }
 
-/**
- * The main entry point
- */
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // Parse command line arguments
     let matches = App::new("dnsresolver")
         .version("0.1.0")
         .author("zoidsec <krypt0mux@gmail.com>")
@@ -67,6 +68,7 @@ async fn main() -> std::io::Result<()> {
         )
         .get_matches();
 
+    // Parse the rate argument and set a default value if parsing fails
     let rate = match matches.value_of("rate").unwrap().parse::<u32>() {
         Ok(rate) => rate,
         Err(_) => {
@@ -75,6 +77,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Parse the concurrency argument and set a default value if parsing fails
     let concurrency = match matches.value_of("concurrency").unwrap().parse::<i32>() {
         Ok(c) => c,
         Err(_) => {
@@ -83,6 +86,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Parse the workers argument and set a default value if parsing fails
     let w: usize = match matches.value_of("workers").unwrap().parse::<usize>() {
         Ok(w) => w,
         Err(_) => {
@@ -91,11 +95,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Parse the ports argument or use a default value
     let ports = match matches.value_of("ports") {
         Some(ports) => ports.to_string(),
         None => "80,443".to_string(),
     };
 
+    // Read input hosts from stdin
     let mut input_hosts = vec![];
     let stdin = io::stdin();
     let reader = io::BufReader::new(stdin);
@@ -104,24 +110,27 @@ async fn main() -> std::io::Result<()> {
         input_hosts.push(line);
     }
 
-    // job channels
+    // Create channels for sending jobs
     let (job_tx, job_rx) = spmc::channel::<Job>();
 
+    // Create a multi-threaded runtime
     let rt = Builder::new_multi_thread()
         .enable_all()
         .worker_threads(w)
         .build()
         .unwrap();
 
-    // Set up a worker pool with the number of threads specified from the arguments
+    // Spawn a worker thread to send URLs to resolver
     rt.spawn(async move { send_url(job_tx, ports, input_hosts, rate).await });
 
+    // Create a resolver
     let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
-    // process the jobs
+    // Create a collection of worker tasks
     let workers = FuturesUnordered::new();
 
-    // process the jobs for scanning.
+    // Create worker tasks for resolving DNS
+
     for _ in 0..concurrency {
         let dns_resolver = resolver.clone();
         let jrx = job_rx.clone();
@@ -135,35 +144,56 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-/**
- * Sends the job to the workers
- */
+// Define an asynchronous function named `send_url`. It takes in the following parameters:
+// - `tx`, a `spmc::Sender<Job>` which is a sender for a single-producer, multi-consumer channel.
+// - `ports`, a `String` representing a list of ports.
+// - `lines`, a `Vec<String>` representing a list of lines.
+// - `rate`, a `u32` representing the rate limit.
+
 async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
     lines: Vec<String>,
     rate: u32,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    //set rate limit
+    // Create a rate limiter with the given rate limit.
     let lim = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(rate).unwrap()));
 
+    // Iterate over each line in the `lines` vector.
     for line in lines {
+        // Create a `Job` struct with the `host` field set to the current line
+        // and the `ports` field set to the given `ports` string.
         let msg = Job {
             host: Some(line.to_string().clone()),
             ports: Some(ports.to_string()),
         };
+
+        // Send the `Job` struct through the `tx` sender.
+        // If the send operation fails, continue to the next iteration.
         if let Err(_) = tx.send(msg) {
             continue;
         }
-        // send the jobs
+
+        // Wait until the rate limiter allows the next job to be sent.
         lim.until_ready().await;
     }
+
+    // Return an empty `Result` indicating success.
     Ok(())
 }
 
-/**
- * This function will be in charge of resolving and probing the hosts
- */
+// This is an asynchronous function named "run_resolver" which takes two parameters:
+// - `rx`, which is a receiver from the `spmc` crate, used for receiving `Job` objects.
+// - `resolver`, which is an instance of the `AsyncResolver` struct from the `hickory_resolver` crate.
+//   The `AsyncResolver` struct is parameterized with a type representing a generic connector for name servers.
+//   In this case, the connector type is `hickory_resolver::name_server::GenericConnector` which is provided by the `hickory_resolver` crate.
+//   The `GenericConnector` type is further parameterized with a type representing the runtime provider.
+//   In this case, the runtime provider type is `hickory_resolver::name_server::TokioRuntimeProvider` which is also provided by the `hickory_resolver` crate.
+//   This means that the `AsyncResolver` instance is using the `GenericConnector` with the `TokioRuntimeProvider` to handle asynchronous operations.
+
+// The function is marked as `async`, which means it can use `await` to suspend execution until an asynchronous operation completes.
+
+// Overall, this function is responsible for running a resolver asynchronously by receiving `Job` objects from the `rx` receiver and using the `resolver` to handle DNS resolution.
 async fn run_resolver(
     rx: spmc::Receiver<Job>,
     resolver: AsyncResolver<
@@ -308,7 +338,7 @@ async fn run_resolver(
             }
         }
 
-        // Iterate over the resolved IP addresses and send HTTP requests
+        // Iterate over the resolved domains and print them to stdout.
         for domain in &resolved_domains {
             if domain != "" {
                 println!("{}", domain);
