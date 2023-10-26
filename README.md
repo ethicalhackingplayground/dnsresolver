@@ -24,7 +24,7 @@ cat subs.txt | dnsresolver -p 8080,8081
 
 If you wish to discover all the virtual hosts from a given subdomain list, you can use the `--vhost` flag.
 
-make sure to increase the soft limit using `ulimit -n 2048` so we can handle more open files.
+make sure to increase the soft limit using `ulimit -n 10000` so we can handle more open files.
 
 ```bash
 cat subs.txt | dnsresolver --vhost
