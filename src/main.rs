@@ -361,6 +361,7 @@ async fn run_resolver(
 
                     match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
                         Ok(Ok(_)) => {
+                            // If the TCP connection is successful, print the HTTP URL with the port
                             let http_with_port = String::from(format!(
                                 "{}{}:{}",
                                 "http://", job_host_http, http_port
@@ -368,6 +369,7 @@ async fn run_resolver(
                             println!("{}", http_with_port);
                         }
                         _ => {
+                            // If the TCP connection
                             continue;
                         }
                     }
