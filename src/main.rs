@@ -158,7 +158,6 @@ async fn main() -> std::io::Result<()> {
 // - `ports`, a `String` representing a list of ports.
 // - `lines`, a `Vec<String>` representing a list of lines.
 // - `rate`, a `u32` representing the rate limit.
-
 async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
