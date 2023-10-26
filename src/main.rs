@@ -188,6 +188,7 @@ async fn main() -> std::io::Result<()> {
     // Iterate over each line in the input stream
     while let Ok(Some(line)) = lines_stream.next_line().await {
         let mut host = String::from("");
+        let line_str = line.clone();
 
         // Perform wildcard validation using a regular expression
         // The regular expression matches lines that start with "*." followed by a domain name
@@ -203,11 +204,11 @@ async fn main() -> std::io::Result<()> {
                 // Append the captured domain name to the host string
                 host.push_str(&cap[1].to_string());
                 break;
+            }else{
+                // Add the host to the input_hosts vector
+                input_hosts.push(line_str.to_string());
             }
         }
-
-        // Add the host to the input_hosts vector
-        input_hosts.push(host);
     }
 
     // Create channels for sending jobs
