@@ -4,10 +4,11 @@ use clap::{App, Arg}; // Command-line argument parsing library
 use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
 use governor::{Quota, RateLimiter}; // Rate limiting library
 use std::{error::Error, net::SocketAddr, time::Duration}; // Standard library modules for error handling, networking, and time
-use tokio::{ // Asynchronous runtime for Rust
+use tokio::{
+    // Asynchronous runtime for Rust
     io::{self, AsyncBufReadExt}, // I/O operations and extension traits
-    runtime::Builder, // Builder for creating custom Tokio runtimes
-    task, // Task handling
+    runtime::Builder,            // Builder for creating custom Tokio runtimes
+    task,                        // Task handling
 };
 
 // Import the `config` module from the `hickory_resolver` crate
