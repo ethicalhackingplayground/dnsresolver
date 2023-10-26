@@ -1,7 +1,12 @@
+/// The above code is a Rust program that imports necessary libraries and defines a main function. It
+/// uses the `async_std` library for TCP networking, the `clap` library for command-line argument
+/// parsing, the `futures` library for asynchronous programming, and the `governor` library for rate
+/// limiting.
 // Import the necessary libraries
 use async_std::net::TcpStream; // Provides functionality for TCP networking
 use clap::{App, Arg}; // Command-line argument parsing library
-use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
+use futures::{stream::FuturesUnordered, StreamExt};
+// Asynchronous programming library
 use governor::{Quota, RateLimiter}; // Rate limiting library
 use std::{error::Error, net::SocketAddr, time::Duration}; // Standard library modules for error handling, networking, and time
 use tokio::{
@@ -139,7 +144,6 @@ async fn main() -> std::io::Result<()> {
     let workers = FuturesUnordered::new();
 
     // Create worker tasks for resolving DNS
-
     for _ in 0..concurrency {
         let dns_resolver = resolver.clone();
         let jrx = job_rx.clone();
@@ -211,41 +215,58 @@ async fn run_resolver(
     >,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     while let Ok(job) = rx.recv() {
-        let job_host: String = job.host.unwrap();
-        let job_ports = job.ports.unwrap();
+        // Receive a job from the channel and assign it to the `job` variable
 
-        // send the jobs
-        let ports = job_ports.clone();
-        let mut resolved_domains: Vec<String> = vec![String::from("")];
+        let job_host: String = job.host.unwrap();
+        // Extract the `host` field from the `job` and assign it to the `job_host` variable.
+        // The `unwrap()` method is used here assuming that the `host` field always has a value and is not `None`.
+        // If `host` is `None`, it will panic.
+
+        let job_ports = job.ports.unwrap();
+        // Extract the `ports` field from the `job` and assign it to the `job_ports` variable.
+        // Similar to `job_host`, it assumes that the `ports` field always has a value and is not `None`.
+        // If `ports` is `None`, it will panic.
+
+        // Clone the `job_ports` variable and convert it to a string, then assign it to the `ports` variable.
+        // This is done to avoid modifying the original `job_ports` variable.
+        let ports = job_ports.clone().to_string();
+
+        // Split the `ports` string by commas, convert each port to a string,
+        // and collect them into a vector of strings (`Vec<String>`).
+        // The resulting vector is assigned to the `ports_array` variable.
+        let ports_array = ports
+            .split(",")
+            .map(|port| port.to_string())
+            .collect::<Vec<_>>();
 
         // probe for open ports and perform dns resolution
-        let ports_array = ports.split(",");
-        for (_, port) in ports_array.enumerate() {
+        for port in ports_array {
             let job_host_http = job_host.clone().to_string();
             let job_host_https = job_host_http.clone().to_string();
             let http_port = port.to_string();
             let https_port = http_port.to_string();
-
             // Lookup the IP addresses associated with a name.
             // The final dot forces this to be an FQDN, otherwise the search rules as specified
-            //  in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
+            // in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
             let response = match resolver
                 .lookup_ip(job_host_https.as_str().to_string())
                 .await
             {
                 Ok(r) => r,
                 Err(_) => {
+                    // If the DNS lookup fails, return early
                     continue;
                 }
             };
 
             if port == "80" {
                 // There can be many addresses associated with the name,
-                //  this can return IPv4 and/or IPv6 addresses
+                // this can return IPv4 and/or IPv6 addresses
                 let address = match response.iter().next() {
                     Some(a) => a,
                     None => continue,
                 };
+
                 if address.is_ipv4() {
                     let timeout = Duration::from_millis(100);
                     let port_int = match http_port.parse::<u16>() {
@@ -256,24 +277,27 @@ async fn run_resolver(
 
                     match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
                         Ok(Ok(_)) => {
+                            // If the TCP connection is successful, print the HTTP URL with the port
                             let http_with_port = String::from(format!(
                                 "{}{}:{}",
                                 "http://", job_host_http, http_port
                             ));
-                            resolved_domains.push(http_with_port);
+                            println!("{}", http_with_port);
                         }
                         _ => {
+                            // If the TCP connection fails, return early
                             continue;
                         }
                     }
                 }
             } else if port == "443" {
                 // There can be many addresses associated with the name,
-                //  this can return IPv4 and/or IPv6 addresses
+                // this can return IPv4 and/or IPv6 addresses
                 let address = match response.iter().next() {
                     Some(a) => a,
                     None => continue,
                 };
+
                 if address.is_ipv4() {
                     let timeout = Duration::from_millis(100);
                     let port_int = match https_port.parse::<u16>() {
@@ -284,24 +308,27 @@ async fn run_resolver(
 
                     match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
                         Ok(Ok(_)) => {
+                            // If the TCP connection is successful, print the HTTPS URL with the port
                             let https_with_port = String::from(format!(
                                 "{}{}:{}",
                                 "https://", job_host_https, https_port
                             ));
-                            resolved_domains.push(https_with_port);
+                            println!("{}", https_with_port);
                         }
                         _ => {
+                            // If the TCP connection fails, return early
                             continue;
                         }
                     }
                 }
             } else {
                 // There can be many addresses associated with the name,
-                //  this can return IPv4 and/or IPv6 addresses
+                // this can return IPv4 and/or IPv6 addresses
                 let address = match response.iter().next() {
                     Some(a) => a,
                     None => continue,
                 };
+
                 if address.is_ipv4() {
                     let timeout = Duration::from_millis(100);
                     let port_int = match https_port.parse::<u16>() {
@@ -312,13 +339,15 @@ async fn run_resolver(
 
                     match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
                         Ok(Ok(_)) => {
+                            // If the TCP connection is successful, print the HTTPS URL with the port
                             let https_with_port = String::from(format!(
                                 "{}{}:{}",
                                 "https://", job_host_https, https_port
                             ));
-                            resolved_domains.push(https_with_port);
+                            println!("{}", https_with_port);
                         }
                         _ => {
+                            // If the TCP connection
                             continue;
                         }
                     }
@@ -336,20 +365,13 @@ async fn run_resolver(
                                 "{}{}:{}",
                                 "http://", job_host_http, http_port
                             ));
-                            resolved_domains.push(http_with_port);
+                            println!("{}", http_with_port);
                         }
                         _ => {
                             continue;
                         }
                     }
                 }
-            }
-        }
-
-        // Iterate over the resolved domains and print them to stdout.
-        for domain in &resolved_domains {
-            if domain != "" {
-                println!("{}", domain);
             }
         }
     }
