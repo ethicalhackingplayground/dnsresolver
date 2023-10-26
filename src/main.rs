@@ -28,8 +28,13 @@ struct Job {
     ports: Option<String>,
 }
 
+
+// This is the entry point of the program.
+// The #[tokio::main] attribute macro is used to define the main function as an asynchronous function.
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // The main function is async, which means it can perform asynchronous operations.
+    // It returns a Result object that represents the success or failure of the program.
     // Parse command line arguments
     let matches = App::new("dnsresolver")
         .version("0.1.0")
