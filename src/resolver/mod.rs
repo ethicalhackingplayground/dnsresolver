@@ -124,49 +124,53 @@ pub async fn run_resolver(
                     let (host_with_port, ip_str) =
                         check_port(address, port_int, host, timeout, vhost).await;
 
-                    // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
-                    let domain = host_with_port.clone();
+                    if vhost {
+                        // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
+                        let domain = host_with_port.clone();
 
-                    let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
-                        Ok(u) => u,
-                        Err(_) => continue,
-                    };
-
-                    // Build a request
-                    let mut request = Request::new(Method::GET, ip_url);
-
-                    let url = match reqwest::Url::parse(&host_with_port) {
-                        Ok(u) => u,
-                        Err(_) => continue,
-                    };
-                    let host_value = match url.domain() {
-                        Some(d) => d,
-                        None => continue,
-                    };
-
-                    // Replace the Host header
-                    request.headers_mut().insert(
-                        reqwest::header::HOST,
-                        HeaderValue::from_str(host_value).unwrap(),
-                    );
-
-                    // Make a request with the modified headers
-                    let response = match client.execute(request).await {
-                        Ok(r) => r,
-                        Err(_) => continue,
-                    };
-                    if response.status().as_u16() != 404 {
-                        // Print the domain and IP address
-                        println!("\n\t{} belongs to -> {}", domain, address.to_string());
-                        let job = JobResult {
-                            domain: domain,
-                            ip: address.to_string(),
-                            outdir: out.to_owned(),
+                        let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
+                            Ok(u) => u,
+                            Err(_) => continue,
                         };
 
-                        if let Err(_) = tx.send(job).await {
-                            continue;
+                        // Build a request
+                        let mut request = Request::new(Method::GET, ip_url);
+
+                        let url = match reqwest::Url::parse(&host_with_port) {
+                            Ok(u) => u,
+                            Err(_) => continue,
+                        };
+                        let host_value = match url.domain() {
+                            Some(d) => d,
+                            None => continue,
+                        };
+
+                        // Replace the Host header
+                        request.headers_mut().insert(
+                            reqwest::header::HOST,
+                            HeaderValue::from_str(host_value).unwrap(),
+                        );
+
+                        // Make a request with the modified headers
+                        let response = match client.execute(request).await {
+                            Ok(r) => r,
+                            Err(_) => continue,
+                        };
+                        if response.status().as_u16() != 404 {
+                            // Print the domain and IP address
+                            println!("\n\t{} belongs to -> {}", domain, address.to_string());
+                            let job = JobResult {
+                                domain: domain,
+                                ip: address.to_string(),
+                                outdir: out.to_owned(),
+                            };
+
+                            if let Err(_) = tx.send(job).await {
+                                continue;
+                            }
                         }
+                    } else {
+                        println!("{}", host_with_port);
                     }
                 }
             }
