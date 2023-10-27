@@ -30,9 +30,13 @@ make sure to increase the soft limit using `ulimit -n 10000` so we can handle mo
 cat subs.txt | dnsresolver --vhost
 ```
 
-# Demonstration
+# Demonstrations
 
-[![asciicast](https://asciinema.org/a/2DIsrRqlWNRDkjq9MOjgCHpTO.svg)](https://asciinema.org/a/2DIsrRqlWNRDkjq9MOjgCHpTO)
+[![asciicast](https://asciinema.org/a/g8lpcHqYeiYdljWxShrgX8naP.svg)](https://asciinema.org/a/g8lpcHqYeiYdljWxShrgX8naP)
+
+[![asciicast](https://asciinema.org/a/GYBZM85QI6SbTiXz59Ncp1mT9.svg)](https://asciinema.org/a/GYBZM85QI6SbTiXz59Ncp1mT9)
+
+[![asciicast](https://asciinema.org/a/VbhwK5GTEHeonVwh55Z6tsfHr.svg)](https://asciinema.org/a/VbhwK5GTEHeonVwh55Z6tsfHr)
 
 ## Feedback
 
