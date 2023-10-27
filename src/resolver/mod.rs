@@ -127,7 +127,7 @@ pub async fn run_resolver(
                     if vhost {
                         // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
                         let domain = host_with_port.clone();
-                        
+
                         let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
                             Ok(u) => u,
                             Err(_) => continue,
@@ -158,7 +158,7 @@ pub async fn run_resolver(
                         };
                         if response.status().as_u16() != 404 {
                             // Print the domain and IP address
-                            println!("\n\t{} belongs to -> {}", domain, address.to_string());
+                            println!("{} belongs to -> {}", domain, address.to_string());
                             let job = JobResult {
                                 domain: domain,
                                 ip: address.to_string(),
