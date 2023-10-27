@@ -122,7 +122,7 @@ pub async fn run_resolver(
                     };
 
                     let (host_with_port, ip_str) =
-                        check_port(address, port_int, host, timeout, vhost).await;
+                        check_port(address, port_int, host, timeout).await;
 
                     if vhost {
                         // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
@@ -189,7 +189,6 @@ async fn check_port(
     port: u16,         // The port to check
     host: String,      // The host name
     timeout: Duration, // The timeout duration for the TCP connection
-    vhost: bool,       // Indicates if the host is a virtual host
 ) -> (String, String) {
     let port_str = port.to_string(); // Convert the port number to a string
     let https_with_port = String::from(format!("{}{}:{}", "https://", host, port_str)); // Construct the HTTPS URL with the port
@@ -202,10 +201,7 @@ async fn check_port(
 
         match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
             Ok(Ok(_)) => {
-                if !vhost {
-                    eprintln!("{}", http_with_port); // Print the HTTP URL with the port
-                    return (http_with_port, ip); // Return the HTTP URL and IP address
-                }
+                return (http_with_port, ip); // Return the HTTP URL and IP address
             }
             _ => {
                 // If the TCP connection fails, return early
@@ -220,10 +216,7 @@ async fn check_port(
 
         match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
             Ok(Ok(_)) => {
-                if !vhost {
-                    eprintln!("{}", https_with_port); // Print the HTTPS URL with the port
-                    return (https_with_port, ip); // Return the HTTPS URL and IP address
-                }
+                return (https_with_port, ip); // Return the HTTPS URL and IP address
             }
             _ => {
                 // If the TCP connection fails, return early
@@ -238,10 +231,7 @@ async fn check_port(
 
         match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
             Ok(Ok(_)) => {
-                if !vhost {
-                    eprintln!("{}", https_with_port); // Print the HTTPS URL with the port
-                    return (https_with_port, ip); // Return the HTTPS URL and IP address
-                }
+                return (https_with_port, ip); // Return the HTTPS URL and IP address
             }
             _ => {
                 // If the TCP connection fails, return early
@@ -249,7 +239,4 @@ async fn check_port(
             }
         }
     }
-
-    // If the TCP connection fails, return early
-    return ("".to_string(), "".to_string()); // Return empty strings
 }
