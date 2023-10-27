@@ -318,9 +318,6 @@ async fn send_url(
                     if let Err(_) = tx.send(msg) {
                         continue;
                     }
-
-                    // Wait until the rate limiter allows the next job to be sent.
-                    lim.until_ready().await;
                     break;
                 }
             }
@@ -336,11 +333,10 @@ async fn send_url(
             if let Err(_) = tx.send(msg) {
                 continue;
             }
-
-            // Wait until the rate limiter allows the next job to be sent.
-            lim.until_ready().await;
-            break;
         }
+
+        // Wait until the rate limiter allows the next job to be sent.
+        lim.until_ready().await;
     }
 
     // Return an empty `Result` indicating success.
