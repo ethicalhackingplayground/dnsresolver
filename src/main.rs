@@ -199,15 +199,17 @@ async fn main() -> std::io::Result<()> {
         };
 
         // Iterate over each capture group in the regular expression match
-        for cap in re.captures_iter(&line) {
-            if cap.len() > 0 {
-                // Append the captured domain name to the host string
-                host.push_str(&cap[1].to_string());
-                break;
-            }else{
-                // Add the host to the input_hosts vector
-                input_hosts.push(line_str.to_string());
+        if re.is_match(&line) {
+            for cap in re.captures_iter(&line) {
+                if cap.len() > 0 {
+                    // Append the captured domain name to the host string
+                    host.push_str(&cap[1].to_string());
+                    input_hosts.push(host);
+                    break;
+                }
             }
+        } else {
+            input_hosts.push(line_str);
         }
     }
 
