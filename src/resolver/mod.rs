@@ -210,9 +210,25 @@ async fn check_port(
                 return ("".to_string(), "".to_string()); // Return empty strings
             }
         }
-    }
+    }else if port_str == "443" {
+        // If the TCP connection is successful, print the HTTPS URL with the port
+        let ip = String::from(format!("{}{}:{}", "https://", ip_addr.to_string(), port));
 
-    if port_str == "443" {
+        let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
+
+        match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
+            Ok(Ok(_)) => {
+                if !vhost {
+                    eprintln!("{}", https_with_port); // Print the HTTPS URL with the port
+                    return (https_with_port, ip); // Return the HTTPS URL and IP address
+                }
+            }
+            _ => {
+                // If the TCP connection fails, return early
+                return ("".to_string(), "".to_string()); // Return empty strings
+            }
+        }
+    }else{
         // If the TCP connection is successful, print the HTTPS URL with the port
         let ip = String::from(format!("{}{}:{}", "https://", ip_addr.to_string(), port));
 
