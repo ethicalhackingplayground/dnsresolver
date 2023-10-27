@@ -128,6 +128,8 @@ pub async fn run_resolver(
                         // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
                         let domain = host_with_port.clone();
 
+                        println!("{}", domain);
+
                         let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
                             Ok(u) => u,
                             Err(_) => continue,
