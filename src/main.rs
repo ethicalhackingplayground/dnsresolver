@@ -277,7 +277,6 @@ async fn main() -> std::io::Result<()> {
 // Define an asynchronous function named `send_url`. It takes in the following parameters:
 // - `tx`, a `spmc::Sender<Job>` which is a sender for a single-producer, multi-consumer channel.
 // - `ports`, a `String` representing a list of ports.
-// - `lines`, a `Vec<String>` representing a list of lines.
 // - `rate`, a `u32` representing the rate limit.
 async fn send_url(
     mut tx: spmc::Sender<Job>,
@@ -322,6 +321,7 @@ async fn send_url(
                 }
             }
         } else {
+            // Create a `Job` struct with the `host` field set to the current line
             // and the `ports` field set to the given `ports` string.
             let msg = Job {
                 host: Some(line.to_string().clone()),

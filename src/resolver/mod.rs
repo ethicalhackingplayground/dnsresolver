@@ -1,18 +1,17 @@
 // Import the necessary libraries
-use async_std::net::TcpStream; // Provides functionality for TCP networking
-                               // Rate limiting library
-use reqwest::{header::HeaderValue, redirect, Method, Request}; // HTTP client library
+use async_std::net::TcpStream; // Import the `TcpStream` struct from the `async_std::net` module to provide functionality for TCP networking
+use reqwest::{header::HeaderValue, redirect, Method, Request}; // Import the necessary types from the `reqwest` crate for HTTP client functionality
 use std::{
-    error::Error,
-    net::{IpAddr, SocketAddr},
-    time::Duration,
-}; // Standard library modules for error handling, networking, and time
-use tokio::sync::mpsc;
+    error::Error, // Import the `Error` trait from the `std::error` module for error handling
+    net::{IpAddr, SocketAddr}, // Import the `IpAddr` and `SocketAddr` structs from the `std::net` module for networking
+    time::Duration, // Import the `Duration` struct from the `std::time` module for time-related functionality
+}; // Import various modules from the standard library for error handling, networking, and time
+use tokio::sync::mpsc; // Import the `mpsc` module from the `tokio::sync` crate for multi-producer, single-consumer communication primitives
 
 // Import the `AsyncResolver` struct from the `hickory_resolver` crate
 use hickory_resolver::AsyncResolver;
 
-use crate::{Job, JobResult};
+use crate::{Job, JobResult}; // Import the `Job` and `JobResult` types from the current crate
 
 // Overall, this function is responsible for running a resolver asynchronously by receiving `Job` objects from the `rx` receiver and using the `resolver` to handle DNS resolution.
 pub async fn run_resolver(
