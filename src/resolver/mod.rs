@@ -170,7 +170,9 @@ pub async fn run_resolver(
                             }
                         }
                     } else {
-                        println!("{}", host_with_port);
+                        if !host_with_port.is_empty() {
+                            println!("{}", host_with_port);
+                        }
                     }
                 }
             }
