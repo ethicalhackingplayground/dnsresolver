@@ -176,43 +176,6 @@ async fn main() -> std::io::Result<()> {
         None => "vhost".to_string(),
     };
 
-    // Read input hosts from stdin
-    // Create an empty vector to store the input hosts
-    let mut input_hosts = vec![];
-
-    // Read input from the standard input
-    let stdin = io::stdin();
-    let reader = io::BufReader::new(stdin);
-    let mut lines_stream = reader.lines();
-
-    // Iterate over each line in the input stream
-    while let Ok(Some(line)) = lines_stream.next_line().await {
-        let mut host = String::from("");
-        let line_str = line.clone();
-
-        // Perform wildcard validation using a regular expression
-        // The regular expression matches lines that start with "*." followed by a domain name
-        // The domain name consists of lowercase letters, a dot, and at least one more character
-        let re = match Regex::new(format!("{}", r#"^\*\.([a-z]+\.[a-z].+)$"#).as_str()) {
-            Ok(re) => re,
-            Err(_) => continue,
-        };
-
-        // Iterate over each capture group in the regular expression match
-        if re.is_match(&line) {
-            for cap in re.captures_iter(&line) {
-                if cap.len() > 0 {
-                    // Append the captured domain name to the host string
-                    host.push_str(&cap[1].to_string());
-                    input_hosts.push(host);
-                    break;
-                }
-            }
-        } else {
-            input_hosts.push(line_str);
-        }
-    }
-
     // Create channels for sending jobs
     let (job_tx, job_rx) = spmc::channel::<Job>();
     let (result_tx, result_rx) = mpsc::channel::<JobResult>(w);
@@ -225,7 +188,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     // Spawn a worker thread to send URLs to resolver
-    rt.spawn(async move { send_url(job_tx, ports, input_hosts, rate).await });
+    rt.spawn(async move { send_url(job_tx, ports, rate).await });
 
     // Spawn a worker thread to write results to a file
     rt.spawn(async move { write_to_file(result_rx).await });
@@ -319,29 +282,65 @@ async fn main() -> std::io::Result<()> {
 async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
-    lines: Vec<String>,
     rate: u32,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     // Create a rate limiter with the given rate limit.
     let lim = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(rate).unwrap()));
 
-    // Iterate over each line in the `lines` vector.
-    for line in lines {
-        // Create a `Job` struct with the `host` field set to the current line
-        // and the `ports` field set to the given `ports` string.
-        let msg = Job {
-            host: Some(line.to_string().clone()),
-            ports: Some(ports.to_string()),
+    // Read input from the standard input
+    let stdin = io::stdin();
+    let reader = io::BufReader::new(stdin);
+    let mut lines_stream = reader.lines();
+
+    // Iterate over each line in the input stream
+    while let Ok(Some(line)) = lines_stream.next_line().await {
+        // Perform wildcard validation using a regular expression
+        // The regular expression matches lines that start with "*." followed by a domain name
+        // The domain name consists of lowercase letters, a dot, and at least one more character
+        let re = match Regex::new(format!("{}", r#"^\*\.([a-z]+\.[a-z].+)$"#).as_str()) {
+            Ok(re) => re,
+            Err(_) => continue,
         };
 
-        // Send the `Job` struct through the `tx` sender.
-        // If the send operation fails, continue to the next iteration.
-        if let Err(_) = tx.send(msg) {
-            continue;
-        }
+        // Iterate over each capture group in the regular expression match
+        if re.is_match(&line) {
+            for cap in re.captures_iter(&line) {
+                if cap.len() > 0 {
+                    // Create a `Job` struct with the `host` field set to the current line
+                    // and the `ports` field set to the given `ports` string.
+                    let msg = Job {
+                        host: Some(cap[1].to_string().clone()),
+                        ports: Some(ports.to_string()),
+                    };
 
-        // Wait until the rate limiter allows the next job to be sent.
-        lim.until_ready().await;
+                    // Send the `Job` struct through the `tx` sender.
+                    // If the send operation fails, continue to the next iteration.
+                    if let Err(_) = tx.send(msg) {
+                        continue;
+                    }
+
+                    // Wait until the rate limiter allows the next job to be sent.
+                    lim.until_ready().await;
+                    break;
+                }
+            }
+        } else {
+            // and the `ports` field set to the given `ports` string.
+            let msg = Job {
+                host: Some(line.to_string().clone()),
+                ports: Some(ports.to_string()),
+            };
+
+            // Send the `Job` struct through the `tx` sender.
+            // If the send operation fails, continue to the next iteration.
+            if let Err(_) = tx.send(msg) {
+                continue;
+            }
+
+            // Wait until the rate limiter allows the next job to be sent.
+            lim.until_ready().await;
+            break;
+        }
     }
 
     // Return an empty `Result` indicating success.

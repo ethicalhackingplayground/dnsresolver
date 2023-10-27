@@ -206,7 +206,7 @@ async fn check_port(
                 return ("".to_string(), "".to_string()); // Return empty strings
             }
         }
-    }else if port_str == "443" {
+    } else if port_str == "443" {
         // If the TCP connection is successful, print the HTTPS URL with the port
         let ip = String::from(format!("{}{}:{}", "https://", ip_addr.to_string(), port));
 
@@ -221,7 +221,7 @@ async fn check_port(
                 return ("".to_string(), "".to_string()); // Return empty strings
             }
         }
-    }else{
+    } else {
         // If the TCP connection is successful, print the HTTPS URL with the port
         let ip = String::from(format!("{}{}:{}", "https://", ip_addr.to_string(), port));
 
