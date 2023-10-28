@@ -4,8 +4,10 @@ a very fast dns resolver
 
 # Installation
 
+Make sure you have rust installed, then run the following command to install dnsresolver.
+
 ```rust
-cargo install --path .
+git clone https://github.com/ethicalhackingplayground/dnsresolver ; cd dnsresolver ; cargo install --path .
 ```
 
 # Usage
@@ -24,7 +26,9 @@ cat subs.txt | dnsresolver -p 8080,8081
 
 #### Using Unresolved Domains
 
-If you wish to discover all the virtual hosts from a given domain list, you can use the `--vhost` flag followed by the `--vhost-file` flag.
+If you wish to discover all the virtual hosts from a given domain list, you can use the `--vhost` flag
+
+followed by the `--vhost-file` flag.
 
 This will attempt to access restricted pages by replace the host header with an unresolved domain from your domain list, the sift algorithm is implemented
 
@@ -34,6 +38,15 @@ make sure to increase the soft limit using `ulimit -n 10000` so we can handle mo
 
 ```bash
 cat subs.txt | dnsresolver --vhost --vhost-file domains.txt
+```
+
+#### Using Localhost
+
+You can also use the `--vhost` flag with the `--check-localhost` flag to replace the host header with localhost, often times this allows you to access
+restricted pages and can lead to some information disclosures and juicy admin panels.
+
+```bash
+cat subs.txt | dnsresolver --vhost --check-localhost
 ```
 
 # Demonstrations
@@ -46,7 +59,7 @@ cat subs.txt | dnsresolver --vhost --vhost-file domains.txt
 
 ## Feedback
 
-If you have any feedback, please reach out to us at krypt0mux@gmail.com
+If you have any feedback, please reach out to us at krypt0mux@gmail.com or via twitter [https://twitter.com/z0idsec](https://twitter.com/z0idsec)
 
 ## License
 
