@@ -2,6 +2,8 @@
 
 a very fast dns resolver
 
+---
+
 # Installation
 
 Make sure you have rust installed, then run the following command to install dnsresolver.
@@ -26,9 +28,9 @@ cat subs.txt | dnsresolver -p 8080,8081
 
 #### Using Unresolved Domains
 
-If you wish to discover all the virtual hosts from a given domain list, you can use the `--vhost` flag
+If you wish to discover all the virtual hosts from a given domain list,
 
-followed by the `--vhost-file` flag.
+you can use the `--vhost` flag followed by the `--vhost-file` flag.
 
 This will attempt to access restricted pages by replace the host header with an unresolved domain from your domain list, the sift algorithm is implemented
 
