@@ -190,7 +190,7 @@ pub async fn run_resolver(
                                 );
 
                                 // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
-                                if content_length > 0 && distance > 2.0 {
+                                if content_length > 0 && distance > 2.0 && status_code == "200" {
                                     // Print the domain, IP address, status code, and content length
                                     println!(
                                         "[vhost] {} -- {} [{}] [{}]",
@@ -286,7 +286,7 @@ pub async fn run_resolver(
                                         &content_length.to_string(),
                                     );
                                     // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
-                                    if content_length > 0 && distance > 2.0 {
+                                    if content_length > 0 && distance > 2.0 && status_code == "200" {
                                         // Print the domain, IP address, status code, and content length
                                         println!(
                                             "[vhost] {} -- {} [{}] [{}]",
