@@ -1,4 +1,5 @@
 mod resolver;
+
 // Import the necessary libraries
 use clap::{App, Arg}; // Command-line argument parsing library
 use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
@@ -102,12 +103,26 @@ async fn main() -> std::io::Result<()> {
                 .help("checks if the host is a vhost and prints out the domains associated to the IP address"),
         )
         .arg(
+            Arg::with_name("vhost-file")
+                .long("vhost-file")
+                .default_value("")
+                .takes_value(true)
+                .display_order(6)
+                .help("the file containing a list of unresolved subdomains to check if they are virtual hosts"),
+        )
+        .arg(
+            Arg::with_name("check-localhost")
+                .long("check-localhost")
+                .display_order(7)
+                .help("check if localhost is a vhost"),
+        )
+        .arg(
             Arg::with_name("dir")
                 .short("d")
                 .long("dir")
                 .takes_value(true)
                 .default_value("vhosts")
-                .display_order(6)
+                .display_order(7)
                 .help("the output directory to store all your virtual hosts that have been enumerated"),
         )
         .get_matches();
@@ -154,6 +169,44 @@ async fn main() -> std::io::Result<()> {
                 exit(1)
             }
         };
+    }
+
+    let mut check_localhost = false; // Initialize a variable called `check_localhost` with the value `false`
+    if vhost {
+        // Check if the `vhost` variable is truthy
+
+        check_localhost = matches.is_present("check-localhost"); // If `vhost` is truthy, assign the result of `matches.is_present("check-localhost")` to `check_localhost`
+    }
+
+    // Check if the command-line argument "vhost-file" has a value
+    // If it has a value, assign it to the variable "vhost_files"
+    // If it doesn't have a value, assign an empty string to "vhost_files"
+    let vhost_path = match matches.value_of("vhost-file") {
+        Some(v) => v,
+        None => "",
+    };
+
+    // Create an empty vector to store the vhost domains
+    let mut vhosts_domains = vec![];
+
+    // Read the list of DNS resolvers from a file
+    if !vhost_path.is_empty() {
+        let vhost_file = match File::open(vhost_path) {
+            Ok(f) => f,
+            Err(err) => {
+                // Print the error message and exit with code 1
+                eprintln!("{}", err);
+                exit(1)
+            }
+        };
+
+        // Create a buffered reader to read the file line by line
+        let vhost_reader = std::io::BufReader::new(vhost_file);
+
+        // Iterate over each line in the file
+        for dns_vhost in vhost_reader.lines() {
+            vhosts_domains.push(dns_vhost.unwrap());
+        }
     }
 
     // Parse the ports argument or use a default value
@@ -261,9 +314,19 @@ async fn main() -> std::io::Result<()> {
         let jrx = job_rx.clone();
         let jtx = result_tx.clone();
         let out = outdir.clone();
+        let dns_domains = vhosts_domains.clone();
         workers.push(task::spawn(async move {
             //  run the detector
-            resolver::run_resolver(jtx, jrx, dns_resolver, vhost, out.as_str()).await
+            resolver::run_resolver(
+                jtx,
+                jrx,
+                dns_resolver,
+                dns_domains,
+                vhost,
+                check_localhost,
+                out,
+            )
+            .await
         }));
     }
 

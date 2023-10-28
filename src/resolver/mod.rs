@@ -1,6 +1,7 @@
 // Import the necessary libraries
-use async_std::net::TcpStream; // Import the `TcpStream` struct from the `async_std::net` module to provide functionality for TCP networking
-use reqwest::{header::HeaderValue, redirect, Method, Request}; // Import the necessary types from the `reqwest` crate for HTTP client functionality
+use async_std::net::TcpStream;
+use distance::sift3;
+use reqwest::{header::HeaderValue, redirect, Method, Request}; // Import the `TcpStream` struct from the `async_std::net` module to provide functionality for TCP networking
 use std::{
     error::Error, // Import the `Error` trait from the `std::error` module for error handling
     net::{IpAddr, SocketAddr}, // Import the `IpAddr` and `SocketAddr` structs from the `std::net` module for networking
@@ -22,8 +23,10 @@ pub async fn run_resolver(
             hickory_resolver::name_server::TokioRuntimeProvider,
         >,
     >,
+    dns_wordlist: Vec<String>,
     vhost: bool,
-    out: &str,
+    check_localhost: bool,
+    outdir: String,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -36,7 +39,7 @@ pub async fn run_resolver(
     //no certs
     let client = reqwest::Client::builder()
         .default_headers(headers)
-        .redirect(redirect::Policy::limited(10))
+        .redirect(redirect::Policy::none())
         .timeout(Duration::from_secs(3))
         .danger_accept_invalid_hostnames(true)
         .danger_accept_invalid_certs(true)
@@ -58,10 +61,12 @@ pub async fn run_resolver(
 
         // Clone the `job_ports` variable and convert it to a string, then assign it to the `ports` variable.
         // This is done to avoid modifying the original `job_ports` variable.
-        let ports = job_ports.clone().to_string();
+        let mut ports = job_ports.clone().to_string();
+
+        let out = outdir.as_str().clone();
 
         // probe for open ports and perform dns resolution
-        if ports.is_empty() {
+        if ports.is_empty() && !vhost {
             // Lookup the IP addresses associated with a name.
             // The final dot forces this to be an FQDN, otherwise the search rules as specified
             // in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
@@ -84,6 +89,9 @@ pub async fn run_resolver(
                 println!("{}", job_host);
             }
         } else {
+            if vhost {
+                ports = "80,443".to_owned();
+            }
             // Split the `ports` string by commas, convert each port to a string,
             // and collect them into a vector of strings (`Vec<String>`).
             // The resulting vector is assigned to the `ports_array` variable.
@@ -98,79 +106,220 @@ pub async fn run_resolver(
                 // Lookup the IP addresses associated with a name.
                 // The final dot forces this to be an FQDN, otherwise the search rules as specified
                 // in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
-                let response = match resolver.lookup_ip(job_host.as_str().to_string()).await {
-                    Ok(r) => r,
-                    Err(_) => {
-                        // If the DNS lookup fails, return early
-                        continue;
-                    }
-                };
-
-                // There can be many addresses associated with the name,
-                // this can return IPv4 and/or IPv6 addresses
-                let address = match response.iter().next() {
-                    Some(a) => a,
-                    None => continue,
-                };
-
-                if address.is_ipv4() {
-                    let timeout = Duration::from_millis(100);
-                    let port_int = match port.parse::<u16>() {
-                        Ok(p) => p,
-                        Err(_) => continue,
+                if let Ok(response) = resolver.lookup_ip(job_host.as_str().to_string()).await {
+                    // There can be many addresses associated with the name,
+                    // this can return IPv4 and/or IPv6 addresses
+                    let address = match response.iter().next() {
+                        Some(a) => a,
+                        None => continue,
                     };
 
-                    let (host_with_port, ip_str) =
-                        check_port(address, port_int, host, timeout).await;
-
-                    if vhost {
-                        // The above code is checking if a virtual host (vhost) is enabled. If it is enabled, it
-                        let domain = host_with_port.clone();
-
-                        let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
-                            Ok(u) => u,
+                    if address.is_ipv4() {
+                        let timeout = Duration::from_millis(100);
+                        let port_int = match port.parse::<u16>() {
+                            Ok(p) => p,
                             Err(_) => continue,
                         };
 
-                        // Build a request
-                        let mut request = Request::new(Method::GET, ip_url);
+                        // Declare variables to store the results of the `check_port` function
+                        let (host_with_port, ip_str) =
+                            check_port(address, port_int, host, timeout).await;
 
-                        let url = match reqwest::Url::parse(&host_with_port) {
-                            Ok(u) => u,
-                            Err(_) => continue,
-                        };
-                        let host_value = match url.domain() {
-                            Some(d) => d,
-                            None => continue,
-                        };
+                        // Check if the `vhost` flag is set to true
+                        if vhost {
+                            if check_localhost {
+                                let main_page = ip_str.clone();
+                                let dns_domain = "localhost";
 
-                        // Replace the Host header
-                        request.headers_mut().insert(
-                            reqwest::header::HOST,
-                            HeaderValue::from_str(host_value).unwrap(),
-                        );
+                                // Parse the job IP address into a URL
+                                let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
+                                    // If parsing succeeds, assign the parsed URL to 'ip_url'
+                                    Ok(u) => u,
+                                    // If parsing fails, continue to the next iteration of the loop
+                                    Err(_) => {
+                                        continue;
+                                    }
+                                };
 
-                        // Make a request with the modified headers
-                        let response = match client.execute(request).await {
-                            Ok(r) => r,
-                            Err(_) => continue,
-                        };
-                        if response.status().as_u16() != 404 {
-                            // Print the domain and IP address
-                            println!("{} belongs to -> {}", domain, address.to_string());
-                            let job = JobResult {
-                                domain: domain,
-                                ip: address.to_string(),
-                                outdir: out.to_owned(),
-                            };
+                                // Build a request with the GET method and the parsed URL
+                                let mut request = Request::new(Method::GET, ip_url);
 
-                            if let Err(_) = tx.send(job).await {
-                                continue;
+                                // If false, insert a 'HOST' header with the value 'unresolved_domain' into the request headers
+                                // The 'unresolved_domain' variable is assumed to be defined elsewhere in the code
+                                // This is to ensure that the request is sent to the specified domain
+                                request.headers_mut().insert(
+                                    reqwest::header::HOST,
+                                    HeaderValue::from_str("localhost").unwrap(),
+                                );
+
+                                // Make a request with the modified headers using the 'client' object
+                                let response = match client.execute(request).await {
+                                    // If the request is successful, assign the response to 'response'
+                                    Ok(r) => r,
+                                    // If there's an error, continue to the next iteration of the loop
+                                    Err(_) => continue,
+                                };
+
+                                let content_length = match response.content_length() {
+                                    Some(cl) => cl,
+                                    None => continue,
+                                };
+
+                                let status_code = response.status().as_u16().to_string();
+
+                                let get = client.get(main_page);
+                                let req = match get.build() {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+
+                                let response2 = match client.execute(req).await {
+                                    Ok(r) => r,
+                                    Err(_) => continue,
+                                };
+
+                                let main_content_length = match response2.content_length() {
+                                    Some(cl) => cl,
+                                    None => continue,
+                                };
+
+                                // Calculate the SIFT3 distance between the string representations of `main_content_length` and `content_length`
+                                let distance = sift3(
+                                    &main_content_length.to_string(),
+                                    &content_length.to_string(),
+                                );
+
+                                // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
+                                if content_length > 0 && distance > 2.0 {
+                                    // Print the domain, IP address, status code, and content length
+                                    println!(
+                                        "[vhost] {} -- {} [{}] [{}]",
+                                        dns_domain,
+                                        ip_str.to_string(),
+                                        status_code,
+                                        content_length.to_string(),
+                                    );
+
+                                    // Create a JobResult struct with the domain, IP address, and output directory
+                                    let job_result = JobResult {
+                                        domain: dns_domain.to_string(),
+                                        ip: ip_str.to_string(),
+                                        outdir: out.to_owned(),
+                                    };
+
+                                    // Send the JobResult through the transmitting end of the channel
+                                    if let Err(_) = tx.send(job_result).await {
+                                        // If there's an error sending the JobResult, continue to the next iteration of the loop
+                                        continue;
+                                    }
+                                } else {
+                                    // Print the domain, IP address, status code, and content length
+                                    eprintln!("{} -- {}", dns_domain, address.to_string(),);
+                                    // If the response body is empty, continue to the next iteration of the loop
+                                    continue;
+                                }
+                            } else {
+                                for dns_domain in &dns_wordlist {
+                                    let mut unresolved_host = String::from("");
+                                    // Lookup the IP addresses associated with a name.
+                                    // The final dot forces this to be an FQDN, otherwise the search rules as specified
+                                    // in `ResolverOpts` will take effect. FQDN's are generally cheaper queries.
+                                    if let Err(_) =
+                                        resolver.lookup_ip(job_host.as_str().to_string()).await
+                                    {
+                                        // If the DNS lookup fails, return early
+                                        // The above code is written in the Rust programming language. However, it seems to
+                                        // be incomplete or incorrect as it only contains the phrase "unresolved_host"
+                                        // followed by three hash symbols. It is not clear what the intended purpose or
+                                        // functionality of this code is.
+                                        unresolved_host.push_str(&dns_domain);
+                                    }
+
+                                    let main_page = ip_str.clone();
+
+                                    // Parse the job IP address into a URL
+                                    let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
+                                        // If parsing succeeds, assign the parsed URL to 'ip_url'
+                                        Ok(u) => u,
+                                        // If parsing fails, continue to the next iteration of the loop
+                                        Err(_) => {
+                                            continue;
+                                        }
+                                    };
+                                    // Build a request with the GET method and the parsed URL
+                                    let mut request = Request::new(Method::GET, ip_url);
+                                    // If false, insert a 'HOST' header with the value 'unresolved_domain' into the request headers
+                                    // The 'unresolved_domain' variable is assumed to be defined elsewhere in the code
+                                    // This is to ensure that the request is sent to the specified domain
+                                    request.headers_mut().insert(
+                                        reqwest::header::HOST,
+                                        HeaderValue::from_str(&unresolved_host).unwrap(),
+                                    );
+                                    // Make a request with the modified headers using the 'client' object
+                                    let response = match client.execute(request).await {
+                                        // If the request is successful, assign the response to 'response'
+                                        Ok(r) => r,
+                                        // If there's an error, continue to the next iteration of the loop
+                                        Err(_) => continue,
+                                    };
+                                    let content_length = match response.content_length() {
+                                        Some(cl) => cl,
+                                        None => continue,
+                                    };
+                                    let status_code = response.status().as_u16().to_string();
+                                    let get = client.get(main_page);
+                                    let req = match get.build() {
+                                        Ok(r) => r,
+                                        Err(_) => continue,
+                                    };
+                                    let response2 = match client.execute(req).await {
+                                        Ok(r) => r,
+                                        Err(_) => continue,
+                                    };
+                                    let main_content_length = match response2.content_length() {
+                                        Some(cl) => cl,
+                                        None => continue,
+                                    };
+                                    // Calculate the SIFT3 distance between the string representations of `main_content_length` and `content_length`
+                                    let distance = sift3(
+                                        &main_content_length.to_string(),
+                                        &content_length.to_string(),
+                                    );
+                                    // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
+                                    if content_length > 0 && distance > 2.0 {
+                                        // Print the domain, IP address, status code, and content length
+                                        println!(
+                                            "[vhost] {} -- {} [{}] [{}]",
+                                            dns_domain,
+                                            ip_str.to_string(),
+                                            status_code,
+                                            content_length.to_string(),
+                                        );
+                                        // Create a JobResult struct with the domain, IP address, and output directory
+                                        let job_result = JobResult {
+                                            domain: dns_domain.to_string(),
+                                            ip: ip_str.to_string(),
+                                            outdir: out.to_owned(),
+                                        };
+                                        // Send the JobResult through the transmitting end of the channel
+                                        if let Err(_) = tx.send(job_result).await {
+                                            // If there's an error sending the JobResult, continue to the next iteration of the loop
+                                            continue;
+                                        }
+                                    } else {
+                                        // Print the domain, IP address, status code, and content length
+                                        eprintln!("{} -- {}", dns_domain, address.to_string(),);
+                                        // If the response body is empty, continue to the next iteration of the loop
+                                        continue;
+                                    }
+                                }
                             }
-                        }
-                    } else {
-                        if !host_with_port.is_empty() {
-                            println!("{}", host_with_port);
+                        } else {
+                            // If the `vhost` flag is not set to true
+                            if !host_with_port.is_empty() {
+                                // Print the `host_with_port` value
+                                println!("{}", host_with_port);
+                            }
                         }
                     }
                 }
