@@ -14,7 +14,7 @@ cargo install --path .
 cat subs.txt | dnsresolver
 ```
 
-If you need to resolve hosts with ports other than the standard 80 and 443, you can use the `--ports` flag.
+If you need to resolve hosts with any ports, you can use the `--ports` flag.
 
 ```bash
 cat subs.txt | dnsresolver -p 8080,8081
@@ -22,12 +22,18 @@ cat subs.txt | dnsresolver -p 8080,8081
 
 ### Virtual Host Enumeration
 
-If you wish to discover all the virtual hosts from a given subdomain list, you can use the `--vhost` flag.
+#### Using Unresolved Domains
+
+If you wish to discover all the virtual hosts from a given domain list, you can use the `--vhost` flag followed by the `--vhost-file` flag.
+
+This will attempt to access restricted pages by replace the host header with an unresolved domain from your domain list, the sift algorithm is implemented
+
+to make sure the virtual host response is different to the actual response.
 
 make sure to increase the soft limit using `ulimit -n 10000` so we can handle more open files.
 
 ```bash
-cat subs.txt | dnsresolver --vhost
+cat subs.txt | dnsresolver --vhost --vhost-file domains.txt
 ```
 
 # Demonstrations
