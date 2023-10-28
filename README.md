@@ -12,6 +12,8 @@ Make sure you have rust installed, then run the following command to install dns
 git clone https://github.com/ethicalhackingplayground/dnsresolver ; cd dnsresolver ; cargo install --path .
 ```
 
+---
+
 # Usage
 
 ```bash
@@ -21,7 +23,7 @@ cat subs.txt | dnsresolver
 If you need to resolve hosts with any ports, you can use the `--ports` flag.
 
 ```bash
-cat subs.txt | dnsresolver -p 8080,8081
+cat subs.txt | dnsresolver -p 443,80,8080,8081
 ```
 
 ### Virtual Host Enumeration
@@ -42,6 +44,12 @@ make sure to increase the soft limit using `ulimit -n 10000` so we can handle mo
 cat subs.txt | dnsresolver --vhost --vhost-file domains.txt
 ```
 
+To validate a finding run this curl command:
+
+```bash
+curl -v -k thehost.com -H "Host: unresolved-domain.com"
+```
+
 #### Using Localhost
 
 You can also use the `--vhost` flag with the `--check-localhost` flag to replace the host header with localhost, often times this allows you to access
@@ -49,6 +57,12 @@ restricted pages and can lead to some information disclosures and juicy admin pa
 
 ```bash
 cat subs.txt | dnsresolver --vhost --check-localhost
+```
+
+To validate a finding run this curl command:
+
+```bash
+curl -v -k thehost.com -H "Host: localhost"
 ```
 
 # Demonstrations
