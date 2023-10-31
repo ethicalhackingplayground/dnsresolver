@@ -1,6 +1,26 @@
 # dnsresolver
 
-a very fast dns resolver
+<h1 align="center">
+  <br>
+<img src="https://github.com/ethicalhackingplayground/dnsresolver/blob/main/static/icon.png" width="200px" alt="DNS Resolver">
+</h1>
+
+<h4 align="center"><b>A Lightning-Fast DNS Resolver</b></h4>
+
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Basic Usage](#usage)
+  - [Resolving Hosts with Ports](#resolving-hosts-with-ports)
+  - [Virtual Host Enumeration](#virtual-host-enumeration)
+    - [Using Unresolved Domains](#using-unresolved-domains)
+    - [Using Localhost](#using-localhost)
+- [Demonstrations](#demonstrations)
+- [Feedback](#feedback)
+- [License](#license)
 
 ---
 
@@ -8,7 +28,7 @@ a very fast dns resolver
 
 Make sure you have rust installed, then run the following command to install dnsresolver.
 
-```rust
+```bash
 git clone https://github.com/ethicalhackingplayground/dnsresolver ; cd dnsresolver ; cargo install --path .
 ```
 
@@ -30,18 +50,20 @@ cat subs.txt | dnsresolver -p 443,80,8080,8081
 
 #### Using Unresolved Domains
 
-If you wish to discover all the virtual hosts from a given domain list,
+First step would be to get all the unresolved hosts from a given domain list using:
+
+```bash
+cat subs.txt | dnsresolver --show-unresolved | unresolved.txt
+```
+
+Then, to discover all the virtual hosts from a given domain list,
 
 you can use the `--vhost` flag followed by the `--vhost-file` flag.
 
-This will attempt to access restricted pages by replace the host header with an unresolved domain from your domain list, the sift algorithm is implemented
-
-to make sure the virtual host response is different to the actual response.
-
-make sure to increase the soft limit using `ulimit -n 10000` so we can handle more open files.
+**dnsresolver** aims to bypass access restrictions on certain pages. It does so by substituting the host header with unresolved domains and using the sift algorithm. This ensures that the virtual host's response differs from the actual response. Remember to raise the soft limit for open files using the command `ulimit -n 10000` to handle more files simultaneously.
 
 ```bash
-cat subs.txt | dnsresolver --vhost --vhost-file domains.txt
+cat subs.txt | dnsresolver --vhost --vhost-file unresolved.txt.txt
 ```
 
 To validate a finding run this curl command:

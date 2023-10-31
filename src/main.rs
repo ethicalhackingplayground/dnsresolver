@@ -1,5 +1,5 @@
 mod resolver;
-
+mod waf;
 // Import the necessary libraries
 use clap::{App, Arg}; // Command-line argument parsing library
 use futures::{stream::FuturesUnordered, StreamExt}; // Asynchronous programming library
@@ -28,6 +28,8 @@ pub struct Job {
     pub host: Option<String>,
     // The ports field is an optional String that represents the ports of the job
     pub ports: Option<String>,
+    // The unresolved_host field is an optional String that represents the unresolved host of the job
+    pub unresolved_host: Option<String>,
 }
 
 // This code block defines a Rust struct named `JobResult` with the following properties:
@@ -39,6 +41,24 @@ pub struct JobResult {
     pub ip: String,
     // `outdir`: A public field of type `String`, which holds the output directory associated with the job result.
     pub outdir: String,
+}
+
+// Define a function called `banner`
+fn banner() {
+    // Define a constant variable called `BANNER` that holds a multiline string
+    // The `r#` prefix allows the use of raw string literals, which means that escape sequences like `\n` are treated as literal characters instead of special characters
+    const BANNER: &str = r#"
+         __                                __               
+    ____/ /___  _____________  _________  / /   _____  _____
+   / __  / __ \/ ___/ ___/ _ \/ ___/ __ \/ / | / / _ \/ ___/
+  / /_/ / / / (__  ) /  /  __(__  ) /_/ / /| |/ /  __/ /    
+  \__,_/_/ /_/____/_/   \___/____/\____/_/ |___/\___/_/     
+
+                   @z0idsec  v0.1.0                                      
+    "#;
+
+    // Print the value of `BANNER` to the standard error stream
+    eprintln!("{}", BANNER);
 }
 
 // This is the entry point of the program.
@@ -108,7 +128,7 @@ async fn main() -> std::io::Result<()> {
                 .default_value("")
                 .takes_value(true)
                 .display_order(6)
-                .help("the file containing a list of unresolved subdomains to check if they are virtual hosts"),
+                .help("the file containing a list of unresolved domains or ips to check if they are virtual hosts"),
         )
         .arg(
             Arg::with_name("check-localhost")
@@ -117,15 +137,33 @@ async fn main() -> std::io::Result<()> {
                 .help("check if localhost is a vhost"),
         )
         .arg(
+            Arg::with_name("validation-level")
+                .long("validation-level")
+                .takes_value(true)
+                .default_value("1000.0")
+                .display_order(8)
+                .help("validation threshold, higher means more accuracy"),
+        )
+        .arg(
             Arg::with_name("dir")
                 .short("d")
                 .long("dir")
                 .takes_value(true)
                 .default_value("vhosts")
-                .display_order(7)
+                .display_order(9)
                 .help("the output directory to store all your virtual hosts that have been enumerated"),
         )
+        .arg(
+            Arg::with_name("show-unresolved")
+                .long("show-unresolved")
+                .default_value("false")
+                .display_order(10)
+                .help("this will only print out the unresolved hosts to stdout"),
+        )
         .get_matches();
+
+    // Call the `banner` function to display a banner.
+    banner();
 
     // Parse the rate argument and set a default value if parsing fails
     let rate = match matches.value_of("rate").unwrap().parse::<u32>() {
@@ -141,7 +179,19 @@ async fn main() -> std::io::Result<()> {
         Ok(c) => c,
         Err(_) => {
             eprintln!("{}", "could not parse concurrency, using default of 1000");
-            100
+            1000
+        }
+    };
+
+    // Parse the concurrency argument and set a default value if parsing fails
+    let validation_level = match matches.value_of("validation-level").unwrap().parse::<f32>() {
+        Ok(c) => c, // If parsing the value as a float succeeds, assign it to `validation_level`
+        Err(_) => {
+            eprintln!(
+                "{}",
+                "could not parse validation-level, using default of 1000.0"
+            ); // Print an error message if parsing fails
+            1000.0 // Assign a default value of 100.0 to `validation_level`
         }
     };
 
@@ -174,9 +224,13 @@ async fn main() -> std::io::Result<()> {
     let mut check_localhost = false; // Initialize a variable called `check_localhost` with the value `false`
     if vhost {
         // Check if the `vhost` variable is truthy
-
         check_localhost = matches.is_present("check-localhost"); // If `vhost` is truthy, assign the result of `matches.is_present("check-localhost")` to `check_localhost`
     }
+
+    // Check if the `vhost` variable is truthy
+    let show_unresolved = matches.is_present("show-unresolved"); // If `vhost` is truthy,
+                                                                 // assign the result of `matches.is_present("check-localhost")`
+                                                                 // to `check_localhost`
 
     // Check if the command-line argument "vhost-file" has a value
     // If it has a value, assign it to the variable "vhost_files"
@@ -241,7 +295,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     // Spawn a worker thread to send URLs to resolver
-    rt.spawn(async move { send_url(job_tx, ports, rate).await });
+    rt.spawn(async move { send_url(job_tx, ports, rate, vhosts_domains).await });
 
     // Spawn a worker thread to write results to a file
     rt.spawn(async move { write_to_file(result_rx).await });
@@ -314,16 +368,16 @@ async fn main() -> std::io::Result<()> {
         let jrx = job_rx.clone();
         let jtx = result_tx.clone();
         let out = outdir.clone();
-        let dns_domains = vhosts_domains.clone();
         workers.push(task::spawn(async move {
             //  run the detector
             resolver::run_resolver(
                 jtx,
                 jrx,
                 dns_resolver,
-                dns_domains,
                 vhost,
+                validation_level,
                 check_localhost,
+                show_unresolved,
                 out,
             )
             .await
@@ -345,6 +399,7 @@ async fn send_url(
     mut tx: spmc::Sender<Job>,
     ports: String,
     rate: u32,
+    unresolved: Vec<String>,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     // Create a rate limiter with the given rate limit.
     let lim = RateLimiter::direct(Quota::per_second(std::num::NonZeroU32::new(rate).unwrap()));
@@ -356,23 +411,43 @@ async fn send_url(
 
     // Iterate over each line in the input stream
     while let Ok(Some(line)) = lines_stream.next_line().await {
-        // Perform wildcard validation using a regular expression
-        // The regular expression matches lines that start with "*." followed by a domain name
-        // The domain name consists of lowercase letters, a dot, and at least one more character
-        let re = match Regex::new(format!("{}", r#"^\*\.([a-z]+\.[a-z].+)$"#).as_str()) {
-            Ok(re) => re,
-            Err(_) => continue,
-        };
+        if unresolved.len() > 0 {
+            for unresolved_domain in &unresolved {
+                // Perform wildcard validation using a regular expression
+                // The regular expression matches lines that start with "*." followed by a domain name
+                // The domain name consists of lowercase letters, a dot, and at least one more character
+                let re = match Regex::new(format!("{}", r#"^\*\.([a-z]+\.[a-z].+)$"#).as_str()) {
+                    Ok(re) => re,
+                    Err(_) => continue,
+                };
 
-        // Iterate over each capture group in the regular expression match
-        if re.is_match(&line) {
-            for cap in re.captures_iter(&line) {
-                if cap.len() > 0 {
+                // Iterate over each capture group in the regular expression match
+                if re.is_match(&line) {
+                    for cap in re.captures_iter(&line) {
+                        if cap.len() > 0 {
+                            // Create a `Job` struct with the `host` field set to the current line
+                            // and the `ports` field set to the given `ports` string.
+                            let msg = Job {
+                                host: Some(cap[1].to_string().clone()),
+                                ports: Some(ports.to_string()),
+                                unresolved_host: Some(unresolved_domain.to_string()),
+                            };
+
+                            // Send the `Job` struct through the `tx` sender.
+                            // If the send operation fails, continue to the next iteration.
+                            if let Err(_) = tx.send(msg) {
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                } else {
                     // Create a `Job` struct with the `host` field set to the current line
                     // and the `ports` field set to the given `ports` string.
                     let msg = Job {
-                        host: Some(cap[1].to_string().clone()),
+                        host: Some(line.to_string().clone()),
                         ports: Some(ports.to_string()),
+                        unresolved_host: Some(unresolved_domain.to_string()),
                     };
 
                     // Send the `Job` struct through the `tx` sender.
@@ -380,26 +455,59 @@ async fn send_url(
                     if let Err(_) = tx.send(msg) {
                         continue;
                     }
-                    break;
                 }
+
+                // Wait until the rate limiter allows the next job to be sent.
+                lim.until_ready().await;
             }
         } else {
-            // Create a `Job` struct with the `host` field set to the current line
-            // and the `ports` field set to the given `ports` string.
-            let msg = Job {
-                host: Some(line.to_string().clone()),
-                ports: Some(ports.to_string()),
+            // Perform wildcard validation using a regular expression
+            // The regular expression matches lines that start with "*." followed by a domain name
+            // The domain name consists of lowercase letters, a dot, and at least one more character
+            let re = match Regex::new(format!("{}", r#"^\*\.([a-z]+\.[a-z].+)$"#).as_str()) {
+                Ok(re) => re,
+                Err(_) => continue,
             };
 
-            // Send the `Job` struct through the `tx` sender.
-            // If the send operation fails, continue to the next iteration.
-            if let Err(_) = tx.send(msg) {
-                continue;
-            }
-        }
+            // Iterate over each capture group in the regular expression match
+            if re.is_match(&line) {
+                for cap in re.captures_iter(&line) {
+                    if cap.len() > 0 {
+                        // Create a `Job` struct with the `host` field set to the current line
+                        // and the `ports` field set to the given `ports` string.
+                        let msg = Job {
+                            host: Some(cap[1].to_string().clone()),
+                            ports: Some(ports.to_string()),
+                            unresolved_host: Some("".to_string()),
+                        };
 
-        // Wait until the rate limiter allows the next job to be sent.
-        lim.until_ready().await;
+                        // Send the `Job` struct through the `tx` sender.
+                        // If the send operation fails, continue to the next iteration.
+                        if let Err(_) = tx.send(msg) {
+                            continue;
+                        }
+                        break;
+                    }
+                }
+            } else {
+                // Create a `Job` struct with the `host` field set to the current line
+                // and the `ports` field set to the given `ports` string.
+                let msg = Job {
+                    host: Some(line.to_string().clone()),
+                    ports: Some(ports.to_string()),
+                    unresolved_host: Some("".to_string()),
+                };
+
+                // Send the `Job` struct through the `tx` sender.
+                // If the send operation fails, continue to the next iteration.
+                if let Err(_) = tx.send(msg) {
+                    continue;
+                }
+            }
+
+            // Wait until the rate limiter allows the next job to be sent.
+            lim.until_ready().await;
+        }
     }
 
     // Return an empty `Result` indicating success.
