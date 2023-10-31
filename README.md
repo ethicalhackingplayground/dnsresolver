@@ -63,7 +63,7 @@ you can use the `--vhost` flag followed by the `--vhost-file` flag.
 **dnsresolver** aims to bypass access restrictions on certain pages. It does so by substituting the host header with unresolved domains and using the sift algorithm. This ensures that the virtual host's response differs from the actual response. Remember to raise the soft limit using the command `ulimit -n 10000` to handle more files simultaneously.
 
 ```bash
-cat subs.txt | dnsresolver --vhost --vhost-file unresolved.txt.txt
+cat subs.txt | dnsresolver --vhost --vhost-file unresolved.txt
 ```
 
 To validate a finding run this curl command:
