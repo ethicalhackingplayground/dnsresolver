@@ -266,10 +266,9 @@ pub async fn run_resolver(
                                 } else {
                                     // Print the domain, IP address, status code, and content length
                                     eprintln!(
-                                        "[-] {} -- {} RSP Diff = [{}]",
+                                        "[-] {} -- {}",
                                         dns_domain,
                                         ip_str.to_string(),
-                                        rsp_distance
                                     );
                                     // If the response body is empty, continue to the next iteration of the loop
                                     continue;
@@ -411,10 +410,9 @@ pub async fn run_resolver(
                                 } else {
                                     // Print the domain, IP address, status code, and content length
                                     eprintln!(
-                                        "[-] {} -- {} RSP Diff = [{}]",
+                                        "[-] {} -- {}",
                                         dns_domain,
                                         ip_str.to_string(),
-                                        rsp_distance
                                     );
                                     // If the response body is empty, continue to the next iteration of the loop
                                     continue;
