@@ -155,12 +155,6 @@ pub async fn run_resolver(
                                     }
                                 };
 
-                                // Check if a Web Application Firewall (WAF) is detected for the specified host with port
-                                if waf::detect_waf(ip_host).await {
-                                    // If a WAF is detected, skip to the next iteration of the loop
-                                    continue;
-                                }
-
                                 // Build a request with the GET method and the parsed URL
                                 let mut request = Request::new(Method::GET, ip_url);
 
@@ -171,6 +165,22 @@ pub async fn run_resolver(
                                     reqwest::header::HOST,
                                     HeaderValue::from_str("localhost").unwrap(),
                                 );
+
+                                // Create a clone of the `request` object and assign it to `request_clone`
+                                let request_clone = match request.try_clone() {
+                                    // If the `try_clone()` method returns `Some`, which means the cloning was successful,
+                                    // assign the cloned object to `rc`
+                                    Some(rc) => rc,
+                                    // If the `try_clone()` method returns `None`, which means the cloning failed,
+                                    // skip to the next iteration of the loop
+                                    None => continue,
+                                };
+
+                                // Check if a Web Application Firewall (WAF) is detected for the specified `ip_host` with `request_clone`
+                                if waf::detect_waf(ip_host, request_clone).await {
+                                    // If a WAF is detected, skip to the next iteration of the loop
+                                    continue;
+                                }
 
                                 // Make a request with the modified headers using the 'client' object
                                 let response = match client.execute(request).await {
@@ -283,12 +293,6 @@ pub async fn run_resolver(
                                 let main_page = ip_str.clone();
                                 let main_site = main_page.clone();
 
-                                // Check if a Web Application Firewall (WAF) is detected for the specified host with port
-                                if waf::detect_waf(main_site).await {
-                                    // If a WAF is detected, skip to the next iteration of the loop
-                                    continue;
-                                }
-
                                 // Parse the job IP address into a URL
                                 let ip_url = match reqwest::Url::parse(&ip_str.to_string()) {
                                     // If parsing succeeds, assign the parsed URL to 'ip_url'
@@ -307,6 +311,23 @@ pub async fn run_resolver(
                                     reqwest::header::HOST,
                                     HeaderValue::from_str(&unresolved_host).unwrap(),
                                 );
+
+                                // Create a clone of the `request` object and assign it to `request_clone`
+                                let request_clone = match request.try_clone() {
+                                    // If the `try_clone()` method returns `Some`, which means the cloning was successful,
+                                    // assign the cloned object to `rc`
+                                    Some(rc) => rc,
+                                    // If the `try_clone()` method returns `None`, which means the cloning failed,
+                                    // skip to the next iteration of the loop
+                                    None => continue,
+                                };
+
+                                // Check if a Web Application Firewall (WAF) is detected for the specified host with port
+                                if waf::detect_waf(main_site, request_clone).await {
+                                    // If a WAF is detected, skip to the next iteration of the loop
+                                    continue;
+                                }
+
                                 // Make a request with the modified headers using the 'client' object
                                 let response = match client.execute(request).await {
                                     // If the request is successful, assign the response to 'response'

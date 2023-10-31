@@ -5,7 +5,7 @@ use std::time::Duration;
 use regex::Regex;
 
 // Importing the `redirect` function from the `reqwest` crate.
-use reqwest::redirect;
+use reqwest::{redirect, Request};
 
 // Importing the `Value` enum from the `serde_json` crate.
 use serde_json::Value;
@@ -508,19 +508,10 @@ const WAF_SIGS: &str = r#"
 ]
 "#;
 
-pub async fn detect_waf(host: String) -> bool {
+pub async fn detect_waf(host: String, request: Request) -> bool {
     // Parse the string of data into serde_json::Value.
     let signature: Value = match serde_json::from_str(&WAF_SIGS) {
         Ok(v) => v, // If parsing is successful, assign the parsed value to `signature`.
-        Err(_) => {
-            // If parsing fails, print the error message and return `false`.
-            return false;
-        }
-    };
-
-    // Parse the host string into a reqwest::Url.
-    let url = match reqwest::Url::parse(&host) {
-        Ok(url) => url, // If parsing is successful, assign the parsed URL to `url`.
         Err(_) => {
             // If parsing fails, print the error message and return `false`.
             return false;
@@ -546,88 +537,56 @@ pub async fn detect_waf(host: String) -> bool {
         .build()
         .unwrap();
 
-    // Create a GET request using the client and the parsed URL.
-    let get = client.get(url);
-    let req = match get.build() {
-        Ok(r) => r, // If building the request is successful, assign the request to `req`.
-        Err(_) => return false, // If building the request fails, return `false`.
-    };
-
     // Execute the request and get the response.
-    let response = match client.execute(req).await {
+    let response = match client.execute(request).await {
         Ok(r) => r, // If executing the request is successful, assign the response to `response`.
         Err(_) => return false, // If executing the request fails, return `false`.
     };
 
-    // Get the headers from the response and iterate over them.
-    let mut is_matched = false;
-
-    // Get the regex pattern from the `signature` value.
-    let pattern = match signature[0]["REGEX"].as_str() {
-        Some(p) => String::from(format!("(?i){}", p.to_string())), // If the pattern exists, assign it to `pattern`.
-        None => "".to_string(), // If the pattern doesn't exist, skip to the next header.
+    let signatures = match signature.as_array() {
+        Some(s) => s,
+        None => return false, // If executing the request fails, return `false`.
     };
 
-    // Split the `pattern` string by ":" and store the parts in `regex_parts`.
-    let mut regex_parts = pattern.split(":");
+    for sig in signatures {
+        // Get the regex pattern from the `signature` value.
+        let pattern = match sig["REGEX"].as_str() {
+            Some(p) => String::from(format!("(?i){}", p.to_string())), // If the pattern exists, assign it to `pattern`.
+            None => "".to_string(), // If the pattern doesn't exist, skip to the next header.
+        };
 
-    // Extract the first part of `regex_parts` and assign it to `header_name`.
-    let header_name = match regex_parts.next() {
-        Some(p) => p.replace("^", ""), // If the first part exists, remove any "^" characters and assign it to `header_name`.
-        None => "".to_string(), // If the first part doesn't exist, assign an empty string to `header_name`.
-    };
+        // Get the headers from the `response` object.
+        let headers = response.headers();
+        let mut header_str = String::from("");
+        for header in headers {
+            let header_name = header.0.to_string();
+            let header_value = match header.1.to_str() {
+                Ok(r) => r.to_string(), // If creating the regex is successful, assign it to `re`.
+                Err(_) => "".to_string(), // If creating the regex fails, skip to the next header.
+            };
 
-    // Clone the value of `header_name` and assign it to `header_map_key`.
-    let header_map_key = header_name.clone();
+            header_str.push_str(&format!("{}: {}\n", header_name, header_value));
+        }
 
-    // Get the headers from the `response` object.
-    let headers = response.headers();
+        // Get the WAF name from the `signature` value.
+        let waf_name = match sig["WAF_NAME"].as_str() {
+            Some(p) => p,         // If the WAF name exists, assign it to `waf_name`.
+            None => return false, // If the WAF name doesn't exist, skip to the next header.
+        };
 
-    // Get the regex pattern from the `signature` value.
-    let pattern = match signature[0]["REGEX"].as_str() {
-        Some(p) => String::from(format!("(?i){}", p.to_string())), // If the pattern exists, assign it to `pattern`.
-        None => return false, // If the pattern doesn't exist, skip to the next header.
-    };
+        // Create a regular expression object from the pattern.
+        let re = match Regex::new(&pattern) {
+            Ok(r) => r,             // If creating the regex is successful, assign it to `re`.
+            Err(_) => return false, // If creating the regex fails, skip to the next header.
+        };
 
-    // Print the chosen WAF signature pattern and the header being checked.
-    eprintln!("[-] Detecting WAF with signature: {}", pattern);
-
-    // Get the value of the header with the name `header_name`.
-    let get_header_value = match headers.get(header_name) {
-        Some(n) => match n.to_str() {
-            Ok(v) => v.to_string(), // If the header value can be converted to a string, assign it to `get_header_value`.
-            Err(_) => "".to_string(), // If an error occurs while converting the header value to a string, assign an empty string to `get_header_value`.
-        },
-        None => "".to_string(), // If the header doesn't exist, assign an empty string to `get_header_value`.
-    };
-
-    // Check if the value of `get_header_value` is empty
-    if get_header_value.is_empty() {
-        // If it is empty, return false
-        return false;
+        // Check if the header value matches the regex pattern.
+        if re.is_match(&header_str) {
+            // Print that a WAF has been detected on the host.
+            eprintln!("[+] WAF detected {} on host: {}", waf_name, host);
+            return true;
+        }
     }
 
-    // Create the header string by formatting the `header_map_key` and `header_map_value` variables.
-    let header = String::from(format!("{}: {}", header_map_key, get_header_value));
-
-    // Get the WAF name from the `signature` value.
-    let waf_name = match signature[0]["WAF_NAME"].as_str() {
-        Some(p) => p,         // If the WAF name exists, assign it to `waf_name`.
-        None => return false, // If the WAF name doesn't exist, skip to the next header.
-    };
-
-    // Create a regular expression object from the pattern.
-    let re = match Regex::new(&pattern) {
-        Ok(r) => r,             // If creating the regex is successful, assign it to `re`.
-        Err(_) => return false, // If creating the regex fails, skip to the next header.
-    };
-
-    // Check if the header value matches the regex pattern.
-    if re.is_match(&header) {
-        // Print that a WAF has been detected on the host.
-        eprintln!("[+] WAF detected {} on host: {}", waf_name, host);
-        is_matched = true;
-    }
-
-    return is_matched; // If no header matches the regex pattern, return `false`.
+    return false; // If no header matches the regex pattern, return `false`.
 }
