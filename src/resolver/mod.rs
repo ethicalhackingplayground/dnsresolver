@@ -128,7 +128,7 @@ pub async fn run_resolver(
                     };
 
                     if address.is_ipv4() {
-                        let timeout = Duration::from_millis(100);
+                        let timeout = Duration::from_millis(1000);
                         let port_int = match port.parse::<u16>() {
                             Ok(p) => p,
                             Err(_) => continue,
@@ -139,7 +139,7 @@ pub async fn run_resolver(
                             check_port(address, port_int, host, timeout).await;
 
                         // Check if the `vhost` flag is set to true
-                        if vhost {
+                        if vhost && host_with_port != "" && ip_str != "" {
                             if check_localhost {
                                 let main_page = ip_str.clone();
                                 let ip_host = main_page.clone();
@@ -173,7 +173,9 @@ pub async fn run_resolver(
                                     Some(rc) => rc,
                                     // If the `try_clone()` method returns `None`, which means the cloning failed,
                                     // skip to the next iteration of the loop
-                                    None => continue,
+                                    None => {
+                                        continue;
+                                    }
                                 };
 
                                 // Check if a Web Application Firewall (WAF) is detected for the specified `ip_host` with `request_clone`
@@ -188,12 +190,6 @@ pub async fn run_resolver(
                                     Ok(r) => r,
                                     // If there's an error, continue to the next iteration of the loop
                                     Err(_) => continue,
-                                };
-                                let content_length = match response.content_length() {
-                                    // Check if the response has a content length
-                                    Some(cl) => cl,
-                                    // If the response doesn't have a content length, skip to the next iteration
-                                    None => continue,
                                 };
 
                                 let status_code = response.status().as_u16().to_string();
@@ -237,17 +233,13 @@ pub async fn run_resolver(
                                 );
 
                                 // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
-                                if content_length > 0
-                                    && rsp_distance >= validation_level
-                                    && status_code == "200"
-                                {
+                                if rsp_distance >= validation_level && status_code == "200" {
                                     // Print the domain, IP address, status code, and content length
                                     println!(
-                                        "**** VIRTUAL HOST DISCOVERED {} -- {} [{}] [{}] RSP Diff = [{}] ****",
+                                        "**** VIRTUAL HOST DISCOVERED {} -- {} [{}] RSP Diff = [{}] ****",
                                         dns_domain,
                                         ip_str.to_string(),
                                         status_code,
-                                        content_length.to_string(),
                                         rsp_distance.to_string()
                                     );
 
@@ -330,12 +322,6 @@ pub async fn run_resolver(
                                     // If there's an error, continue to the next iteration of the loop
                                     Err(_) => continue,
                                 };
-                                let content_length = match response.content_length() {
-                                    // Check if the response has a content length
-                                    Some(cl) => cl,
-                                    // If the response doesn't have a content length, skip to the next iteration
-                                    None => continue,
-                                };
 
                                 let status_code = response.status().as_u16().to_string();
 
@@ -378,17 +364,13 @@ pub async fn run_resolver(
                                 );
 
                                 // Check if the `content_length` is greater than 0 and the `distance` is greater than 0.5
-                                if content_length > 0
-                                    && rsp_distance >= validation_level
-                                    && status_code == "200"
-                                {
+                                if rsp_distance >= validation_level && status_code == "200" {
                                     // Print the domain, IP address, status code, and content length
                                     println!(
-                                        "**** VIRTUAL HOST DISCOVERED {} -- {} [{}] [{}] RSP Diff = [{}] ****",
+                                        "**** VIRTUAL HOST DISCOVERED {} -- {} [{}] RSP Diff = [{}] ****",
                                         dns_domain,
                                         ip_str.to_string(),
                                         status_code,
-                                        content_length.to_string(),
                                         rsp_distance.to_string()
                                     );
 
