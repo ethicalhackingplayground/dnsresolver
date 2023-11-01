@@ -70,7 +70,7 @@ pub async fn run_resolver(
         let out = outdir.as_str().clone();
 
         // probe for open ports and perform dns resolution
-        if ports.is_empty() && !vhost && show_unresolved {
+        if ports.is_empty() && !vhost {
             // Check if the flag 'show_unresolved' is true
             if show_unresolved {
                 // Try to lookup the IP address for the 'job_host' using the 'resolver' object
@@ -265,11 +265,7 @@ pub async fn run_resolver(
                                     }
                                 } else {
                                     // Print the domain, IP address, status code, and content length
-                                    eprintln!(
-                                        "[-] {} -- {}",
-                                        dns_domain,
-                                        ip_str.to_string(),
-                                    );
+                                    eprintln!("[-] {} -- {}", dns_domain, ip_str.to_string(),);
                                     // If the response body is empty, continue to the next iteration of the loop
                                     continue;
                                 }
@@ -409,11 +405,7 @@ pub async fn run_resolver(
                                     }
                                 } else {
                                     // Print the domain, IP address, status code, and content length
-                                    eprintln!(
-                                        "[-] {} -- {}",
-                                        dns_domain,
-                                        ip_str.to_string(),
-                                    );
+                                    eprintln!("[-] {} -- {}", dns_domain, ip_str.to_string(),);
                                     // If the response body is empty, continue to the next iteration of the loop
                                     continue;
                                 }

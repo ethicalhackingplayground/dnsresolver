@@ -156,7 +156,6 @@ async fn main() -> std::io::Result<()> {
         .arg(
             Arg::with_name("show-unresolved")
                 .long("show-unresolved")
-                .default_value("false")
                 .display_order(10)
                 .help("this will only print out the unresolved hosts to stdout"),
         )
