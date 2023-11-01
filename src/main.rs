@@ -109,17 +109,26 @@ async fn main() -> std::io::Result<()> {
                 .help("the number of concurrent workers"),
         )
         .arg(
+            Arg::with_name("timeout")
+                .short("t")
+                .long("timeout")
+                .default_value("2")
+                .takes_value(true)
+                .display_order(4)
+                .help("the timeout for TCP connections and HTTP requests"),
+        )
+        .arg(
             Arg::with_name("resolvers")
                 .long("resolvers")
                 .default_value("")
                 .takes_value(true)
-                .display_order(4)
+                .display_order(5)
                 .help("the file containing a list of resolvers to use"),
         )
         .arg(
             Arg::with_name("vhost")
                 .long("vhost")
-                .display_order(5)
+                .display_order(6)
                 .help("checks if the host is a vhost and prints out the domains associated to the IP address"),
         )
         .arg(
@@ -127,13 +136,13 @@ async fn main() -> std::io::Result<()> {
                 .long("vhost-file")
                 .default_value("")
                 .takes_value(true)
-                .display_order(6)
+                .display_order(7)
                 .help("the file containing a list of unresolved domains or ips to check if they are virtual hosts"),
         )
         .arg(
             Arg::with_name("check-localhost")
                 .long("check-localhost")
-                .display_order(7)
+                .display_order(8)
                 .help("check if localhost is a vhost"),
         )
         .arg(
@@ -141,7 +150,7 @@ async fn main() -> std::io::Result<()> {
                 .long("validation-level")
                 .takes_value(true)
                 .default_value("1000.0")
-                .display_order(8)
+                .display_order(9)
                 .help("validation threshold, higher means more accuracy"),
         )
         .arg(
@@ -150,13 +159,13 @@ async fn main() -> std::io::Result<()> {
                 .long("dir")
                 .takes_value(true)
                 .default_value("vhosts")
-                .display_order(9)
+                .display_order(10)
                 .help("the output directory to store all your virtual hosts that have been enumerated"),
         )
         .arg(
             Arg::with_name("show-unresolved")
                 .long("show-unresolved")
-                .display_order(10)
+                .display_order(11)
                 .help("this will only print out the unresolved hosts to stdout"),
         )
         .get_matches();
@@ -168,7 +177,7 @@ async fn main() -> std::io::Result<()> {
     let rate = match matches.value_of("rate").unwrap().parse::<u32>() {
         Ok(rate) => rate,
         Err(_) => {
-            eprintln!("{}", "could not parse rate, using default of 1000");
+            eprintln!("{}", "could not parse rate, using default value of 1000");
             100
         }
     };
@@ -177,8 +186,21 @@ async fn main() -> std::io::Result<()> {
     let concurrency = match matches.value_of("concurrency").unwrap().parse::<i32>() {
         Ok(c) => c,
         Err(_) => {
-            eprintln!("{}", "could not parse concurrency, using default of 1000");
+            eprintln!(
+                "{}",
+                "could not parse concurrency, using defaul value of 1000"
+            );
             1000
+        }
+    };
+
+    // Parse the concurrency argument and set a default value if parsing fails
+    let timeout = match matches.value_of("timeout").unwrap().parse::<usize>() {
+        Ok(c) => c, // If parsing succeeds, assign the parsed value to `timeout`
+        Err(_) => {
+            // If parsing fails
+            eprintln!("{}", "could not parse timeout, using default value of 2"); // Print an error message
+            2 // Assign a default value of 3 to `timeout`
         }
     };
 
@@ -188,7 +210,7 @@ async fn main() -> std::io::Result<()> {
         Err(_) => {
             eprintln!(
                 "{}",
-                "could not parse validation-level, using default of 1000.0"
+                "could not parse validation-level, using default value of 1000.0"
             ); // Print an error message if parsing fails
             1000.0 // Assign a default value of 100.0 to `validation_level`
         }
@@ -198,7 +220,7 @@ async fn main() -> std::io::Result<()> {
     let w: usize = match matches.value_of("workers").unwrap().parse::<usize>() {
         Ok(w) => w,
         Err(_) => {
-            eprintln!("{}", "could not parse workers, using default of 1");
+            eprintln!("{}", "could not parse workers, using default value of 1");
             1
         }
     };
@@ -378,6 +400,7 @@ async fn main() -> std::io::Result<()> {
                 check_localhost,
                 show_unresolved,
                 out,
+                timeout,
             )
             .await
         }));

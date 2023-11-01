@@ -28,6 +28,7 @@ pub async fn run_resolver(
     check_localhost: bool,
     show_unresolved: bool,
     outdir: String,
+    timeout: usize,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -37,10 +38,14 @@ pub async fn run_resolver(
         ),
     );
 
+    let timeout_c = timeout.clone();
+    let seconds = timeout_c as u64;
+    let duration = Duration::from_secs(seconds);
+
     //no certs
     let client = reqwest::Client::builder()
         .default_headers(headers)
-        .redirect(redirect::Policy::limited(10))
+        .redirect(redirect::Policy::limited(timeout))
         .timeout(Duration::from_secs(3))
         .danger_accept_invalid_hostnames(true)
         .danger_accept_invalid_certs(true)
@@ -128,7 +133,6 @@ pub async fn run_resolver(
                     };
 
                     if address.is_ipv4() {
-                        let timeout = Duration::from_millis(1000);
                         let port_int = match port.parse::<u16>() {
                             Ok(p) => p,
                             Err(_) => continue,
@@ -136,7 +140,7 @@ pub async fn run_resolver(
 
                         // Declare variables to store the results of the `check_port` function
                         let (host_with_port, ip_str) =
-                            check_port(address, port_int, host, timeout).await;
+                            check_port(address, port_int, host, duration).await;
 
                         // Check if the `vhost` flag is set to true
                         if vhost && host_with_port != "" && ip_str != "" {
@@ -179,7 +183,7 @@ pub async fn run_resolver(
                                 };
 
                                 // Check if a Web Application Firewall (WAF) is detected for the specified `ip_host` with `request_clone`
-                                if waf::detect_waf(ip_host, request_clone).await {
+                                if waf::detect_waf(ip_host, request_clone, timeout_c).await {
                                     // If a WAF is detected, skip to the next iteration of the loop
                                     continue;
                                 }
@@ -310,7 +314,7 @@ pub async fn run_resolver(
                                 };
 
                                 // Check if a Web Application Firewall (WAF) is detected for the specified host with port
-                                if waf::detect_waf(main_site, request_clone).await {
+                                if waf::detect_waf(main_site, request_clone, timeout_c).await {
                                     // If a WAF is detected, skip to the next iteration of the loop
                                     continue;
                                 }

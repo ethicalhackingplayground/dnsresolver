@@ -508,7 +508,7 @@ const WAF_SIGS: &str = r#"
 ]
 "#;
 
-pub async fn detect_waf(host: String, request: Request) -> bool {
+pub async fn detect_waf(host: String, request: Request, timeout: usize) -> bool {
     // Parse the string of data into serde_json::Value.
     let signature: Value = match serde_json::from_str(&WAF_SIGS) {
         Ok(v) => v, // If parsing is successful, assign the parsed value to `signature`.
@@ -530,7 +530,7 @@ pub async fn detect_waf(host: String, request: Request) -> bool {
     // Create a new reqwest::Client with custom configurations.
     let client = reqwest::Client::builder()
         .default_headers(headers)
-        .redirect(redirect::Policy::limited(10))
+        .redirect(redirect::Policy::limited(timeout))
         .timeout(Duration::from_secs(3))
         .danger_accept_invalid_hostnames(true)
         .danger_accept_invalid_certs(true)
