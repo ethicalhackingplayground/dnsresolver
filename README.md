@@ -53,7 +53,7 @@ cat subs.txt | dnsresolver -p 443,80,8080,8081
 First step would be to get all the unresolved hosts from a given domain list using:
 
 ```bash
-cat subs.txt | dnsresolver --show-unresolved | unresolved.txt
+cat subs.txt | dnsresolver --show-unresolved | anew unresolved.txt
 ```
 
 Then, to discover all the virtual hosts from a given domain list,
