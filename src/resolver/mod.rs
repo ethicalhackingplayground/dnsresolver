@@ -72,7 +72,7 @@ pub async fn run_resolver(
 
         // Clone the `outdir` variable and convert it to a string, then assign it to the `out` variable.
         // This is done to avoid modifying the original `outdir` variable.
-        let out = outdir.as_str().clone();
+        let out = outdir.as_str();
 
         // probe for open ports and perform dns resolution
         if ports.is_empty() && !vhost {
