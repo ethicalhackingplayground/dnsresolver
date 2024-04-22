@@ -420,13 +420,13 @@ async fn check_port(
     host: String,      // The host name
     timeout: Duration, // The timeout duration for the TCP connection
 ) -> (String, String) {
-    let https_with_port = format!("https://{}:{}", host, port); // Construct the HTTPS URL with the port
-    let http_with_port = format!("http://{}:{}", host, port); // Construct the HTTP URL with the port
+    let https_with_port = format!("https://{host}:{port}"); // Construct the HTTPS URL with the port
+    let http_with_port = format!("http://{host}:{port}"); // Construct the HTTP URL with the port
     if port == 80 {
         let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
         // If the TCP connection is successful, print the HTTP URL with the port
-        let ip = format!("http://{}:{}", ip_addr.to_string(), port);
+        let ip = format!("http://{ip_addr}:{port}");
 
         match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
             Ok(Ok(_)) => {
@@ -439,7 +439,7 @@ async fn check_port(
         }
     } else if port == 443 {
         // If the TCP connection is successful, print the HTTPS URL with the port
-        let ip = format!("https://{}:{}", ip_addr.to_string(), port);
+        let ip = format!("https://{ip_addr}:{port}");
 
         let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
@@ -454,7 +454,7 @@ async fn check_port(
         }
     } else {
         // If the TCP connection is successful, print the HTTPS URL with the port
-        let ip = format!("https://{}:{}", ip_addr.to_string(), port);
+        let ip = format!("https://{ip_addr}:{port}");
 
         let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
