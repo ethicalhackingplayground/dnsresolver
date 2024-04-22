@@ -420,10 +420,9 @@ async fn check_port(
     host: String,      // The host name
     timeout: Duration, // The timeout duration for the TCP connection
 ) -> (String, String) {
-    let port_str = port.to_string(); // Convert the port number to a string
-    let https_with_port = String::from(format!("{}{}:{}", "https://", host, port_str)); // Construct the HTTPS URL with the port
-    let http_with_port = String::from(format!("{}{}:{}", "http://", host, port_str)); // Construct the HTTP URL with the port
-    if port_str == "80" {
+    let https_with_port = String::from(format!("{}{}:{}", "https://", host, port)); // Construct the HTTPS URL with the port
+    let http_with_port = String::from(format!("{}{}:{}", "http://", host, port)); // Construct the HTTP URL with the port
+    if port == 80 {
         let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
         // If the TCP connection is successful, print the HTTP URL with the port
@@ -438,7 +437,7 @@ async fn check_port(
                 return ("".to_string(), "".to_string()); // Return empty strings
             }
         }
-    } else if port_str == "443" {
+    } else if port == 443 {
         // If the TCP connection is successful, print the HTTPS URL with the port
         let ip = String::from(format!("{}{}:{}", "https://", ip_addr.to_string(), port));
 
