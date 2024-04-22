@@ -422,49 +422,53 @@ async fn check_port(
 ) -> (String, String) {
     let https_with_port = format!("https://{host}:{port}"); // Construct the HTTPS URL with the port
     let http_with_port = format!("http://{host}:{port}"); // Construct the HTTP URL with the port
-    if port == 80 {
-        let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
+    match port {
+        80 => {
+            let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
-        // If the TCP connection is successful, print the HTTP URL with the port
-        let ip = format!("http://{ip_addr}:{port}");
+            // If the TCP connection is successful, print the HTTP URL with the port
+            let ip = format!("http://{ip_addr}:{port}");
 
-        match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
-            Ok(Ok(_)) => {
-                return (http_with_port, ip); // Return the HTTP URL and IP address
-            }
-            _ => {
-                // If the TCP connection fails, return early
-                return ("".to_string(), "".to_string()); // Return empty strings
-            }
-        }
-    } else if port == 443 {
-        // If the TCP connection is successful, print the HTTPS URL with the port
-        let ip = format!("https://{ip_addr}:{port}");
-
-        let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
-
-        match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
-            Ok(Ok(_)) => {
-                return (https_with_port, ip); // Return the HTTPS URL and IP address
-            }
-            _ => {
-                // If the TCP connection fails, return early
-                return ("".to_string(), "".to_string()); // Return empty strings
+            match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
+                Ok(Ok(_)) => {
+                    return (http_with_port, ip); // Return the HTTP URL and IP address
+                }
+                _ => {
+                    // If the TCP connection fails, return early
+                    return ("".to_string(), "".to_string()); // Return empty strings
+                }
             }
         }
-    } else {
-        // If the TCP connection is successful, print the HTTPS URL with the port
-        let ip = format!("https://{ip_addr}:{port}");
+        443 => {
+            // If the TCP connection is successful, print the HTTPS URL with the port
+            let ip = format!("https://{ip_addr}:{port}");
 
-        let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
+            let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
 
-        match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
-            Ok(Ok(_)) => {
-                return (https_with_port, ip); // Return the HTTPS URL and IP address
+            match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
+                Ok(Ok(_)) => {
+                    return (https_with_port, ip); // Return the HTTPS URL and IP address
+                }
+                _ => {
+                    // If the TCP connection fails, return early
+                    return ("".to_string(), "".to_string()); // Return empty strings
+                }
             }
-            _ => {
-                // If the TCP connection fails, return early
-                return ("".to_string(), "".to_string()); // Return empty strings
+        }
+        _ => {
+            // If the TCP connection is successful, print the HTTPS URL with the port
+            let ip = format!("https://{ip_addr}:{port}");
+
+            let socket_address = SocketAddr::new(ip_addr.clone(), port); // Create a socket address using the IP address and port
+
+            match tokio::time::timeout(timeout, TcpStream::connect(&socket_address)).await {
+                Ok(Ok(_)) => {
+                    return (https_with_port, ip); // Return the HTTPS URL and IP address
+                }
+                _ => {
+                    // If the TCP connection fails, return early
+                    return ("".to_string(), "".to_string()); // Return empty strings
+                }
             }
         }
     }
